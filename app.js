@@ -21,6 +21,8 @@ let questionId = "wings";
 let placements = new Map();
 let current = 0;
 let checked = false;
+let sorted = false;
+let vennGuess = null;
 const pair = ["butterfly", "spider"];
 
 function shuffle(items) {
@@ -50,6 +52,8 @@ function resetRound() {
   placements = new Map();
   current = 0;
   checked = false;
+  sorted = false;
+  vennGuess = null;
 }
 
 function button(action, label, { value = "", disabled = false, style = "", pressed } = {}) {
@@ -73,9 +77,16 @@ function deck() {
   const counts = select("draw-count", "圖卡張數", [8,9,10,11,12].map(n => [n, n + " 張"]), drawCount);
   const controls = `<div class="bar"><h2>抽取動物圖卡</h2><div class="tools">${counts}
     ${button("draw", "隨機抽圖卡", {style: "primary"})}</div></div>`;
-  if (!batch.length) return `<section class="screen">${controls}
-    <div class="intro"><div class="sample-pictures">${["swallow","zebra","turtle"].map(id => picture(animals.find(a=>a.id===id))).join("")}</div>
-    <p>從空中、陸地和水中平均抽取 8～12 種動物。</p></div></section>`;
+  if (!batch.length) return `<section class="screen opening">
+    <div class="opening-copy"><h2>找出動物的特徵</h2>
+      <p>抽出一隊動物，用線索分類，再找出牠們的共同特徵。</p>
+      <div class="tools">${counts}${button("draw","隨機抽圖卡",{style:"primary"})}</div></div>
+    <div class="opening-art" aria-hidden="true">
+      <div class="moon"></div>
+      <img class="hero-bird" src="assets/swallow.svg" alt="">
+      <img class="hero-zebra" src="assets/zebra.svg" alt="">
+      <img class="hero-turtle" src="assets/turtle.svg" alt="">
+    </div></section>`;
   const pageSize = compact.matches ? 4 : 12;
   const pages = Math.ceil(batch.length / pageSize);
   deckPage = Math.min(deckPage, pages - 1);
@@ -111,7 +122,6 @@ function tree() {
     <div>${button("go","前往抽圖卡",{value:"deck",style:"primary"})}</div></div></section>`;
   const animal = batch[current];
   const currentSide = placements.get(animal.id);
-  const question = features[questionId];
   const yesTotal = batch.filter(a=>answer(a)==="yes").length;
   const canSplit = yesTotal > 0 && yesTotal < batch.length;
   const mistakes = checked ? batch.filter(a=>placements.get(a.id)!==answer(a)) : [];
@@ -122,7 +132,7 @@ function tree() {
       {value:side, disabled:!canSplit || checked, pressed:checked ? answer(animal)===side : currentSide===side, style:"bucket"});
   };
   const prompt = checked
-    ? mistakes.length ? `答對 ${batch.length - mistakes.length} / ${batch.length} 張。用下方圖卡編號查看每張的答案。` : `你用同一個條件，正確分完了 ${batch.length} 張圖卡！`
+    ? mistakes.length ? `答對 ${batch.length - mistakes.length} / ${batch.length} 張。看看線索，再修正放錯的圖卡。` : `你用同一個條件，正確分完了 ${batch.length} 張圖卡！`
     : canSplit ? "把圖卡拖到「是」或「否」，也可以直接點選放置區。" : "這個條件會把所有圖卡放在同一邊，請換一個條件。";
   const detail = checked
     ? `${wrong ? "再觀察。你放在「" + sideLabel[currentSide] + "」，正確是「" + sideLabel[answer(animal)] + "」。" : "放對了。"}${clues[questionId]}`
@@ -141,23 +151,37 @@ function tree() {
       const mark = checked ? (placed===answer(a) ? " ✓" : " ↺") : placed ? " ·" : "";
       const info = checked ? (placed===answer(a) ? "，正確" : "，需修正") : placed ? "，已放置" : "，待分類";
       return button("card",`<span aria-hidden="true">${i+1}${mark}</span><span class="sr-only">第 ${i+1} 張，${a.name}${info}</span>`,
-        {value:i,pressed:i===current});
+      {value:i,pressed:i===current,style:checked && placed!==answer(a) ? "needs-review" : placed ? "placed" : ""});
     }).join("")}</div>
-    <div class="bar"><strong>已放 ${placements.size} / ${batch.length} 張</strong>
-      ${checked ? button("retry","再分一次",{style:"primary"}) :
+    <div class="bar"><div class="round-progress"><strong>已放 ${placements.size} / ${batch.length} 張</strong>
+      <progress aria-label="圖卡分類進度" max="${batch.length}" value="${placements.size}"></progress></div>
+      ${checked ? mistakes.length ? button("retry","修正錯卡",{style:"primary"}) :
+        button("go","前往維恩圖",{value:"venn",style:"primary"}) :
         button("check","檢查答案",{disabled:placements.size!==batch.length,style:"primary"})}</div></div>
   </section>`;
 }
 
-function venn() {
+function comparison() {
   const [left, right] = pair.map(id=>animals.find(a=>a.id===id));
-  const choices = animal => animals.filter(a=>a!==animal).map(a=>[a.id,a.name]);
   const labels = [[],[],[]];
   for (const feature of featureList) {
     const inLeft = feature.test(left);
     const inRight = feature.test(right);
     if (inLeft || inRight) labels[inLeft ? Number(inRight) : 2].push(feature.label);
   }
+  const correctZone = labels[1].length ? 1 : labels[0].length ? 0 : 2;
+  return {left,right,labels,correctZone,challenge:labels[correctZone][0]};
+}
+
+function vennSolved() {
+  const {challenge,correctZone} = comparison();
+  return Boolean(challenge) && vennGuess === correctZone;
+}
+
+function venn() {
+  const {left,right,labels,challenge} = comparison();
+  const choices = animal => animals.filter(a=>a!==animal).map(a=>[a.id,a.name]);
+  const solved = vennSolved();
   return `<section class="screen compare">
     <div><h2>比較兩種動物</h2>
       <div class="pair-select">${select("left","左圈",choices(right),left.id)}${select("right","右圈",choices(left),right.id)}</div>
@@ -165,16 +189,22 @@ function venn() {
     <div class="pair-pictures">${picture(left)}${picture(right)}</div>
     <div class="venn" aria-label="兩種動物的維恩圖">
       <svg viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true">
-        <ellipse cx="205" cy="110" rx="199" ry="105" fill="#f2dacb" stroke="#8c3d2e" stroke-width="2"/>
-        <ellipse cx="395" cy="110" rx="199" ry="105" fill="#cce3db" stroke="#295844" stroke-width="2" style="mix-blend-mode:multiply"/>
+        <ellipse cx="205" cy="110" rx="199" ry="105" class="venn-left"/>
+        <ellipse cx="395" cy="110" rx="199" ry="105" class="venn-right"/>
       </svg>
-      ${["左邊獨有","共同特徵","右邊獨有"].map((label,i)=>`<section><h3>${label}</h3>
-        ${labels[i].length ? `<ul>${labels[i].map(item=>`<li>${item}</li>`).join("")}</ul>` : "<p>目前無項目</p>"}</section>`).join("")}
-    </div></section>`;
+      ${["左邊獨有","共同特徵","右邊獨有"].map((label,i)=>`<section><h3>${button("zone",label,{value:i,pressed:vennGuess===i})}</h3>
+        ${labels[i].length ? `<ul>${labels[i].map(item=>`<li>${sorted && !solved && item===challenge ? "？" : item}</li>`).join("")}</ul>` : "<p>目前無項目</p>"}</section>`).join("")}
+    </div><div class="bar venn-footer"><p>${solved
+      ? sorted ? "任務完成！你找對了特徵所在的區域。" : "答對了！試著換一種動物比較。"
+      : challenge ? `「${challenge}」應放在哪一區？${vennGuess===null ? "" : " 再比較兩張圖卡。"}` : "換一種動物，試試看有哪些特徵。"}</p>
+      ${solved && sorted ? button("restart","再玩一輪",{style:"primary"}) : ""}</div></section>`;
 }
 
 function render(focus) {
   for (const button of tabs) {
+    const stage = button.dataset.tab;
+    const complete = {deck:batch.length>0,tree:sorted,venn:vennSolved()}[stage];
+    button.classList.toggle("complete",complete);
     if (button.dataset.tab === tab) button.setAttribute("aria-current","page");
     else button.removeAttribute("aria-current");
   }
@@ -225,14 +255,30 @@ activity.addEventListener("click", event => {
     case "check": {
       checked = true;
       const firstWrong = batch.findIndex(animal=>placements.get(animal.id)!==answer(animal));
+      sorted = firstWrong === -1;
       if (firstWrong !== -1) current = firstWrong;
       say(firstWrong === -1 ? "全部正確！" : "已顯示正確分組。");
       focus = {action:"card",value:String(current)};
       break;
     }
     case "retry":
+      for (const animal of batch) {
+        if (placements.get(animal.id) !== answer(animal)) placements.delete(animal.id);
+      }
+      current = batch.findIndex(animal=>!placements.has(animal.id));
+      checked = false;
+      focus = {action:"place",value:"yes"};
+      say("已保留分對的卡，請重新分類剩下的圖卡。");
+      break;
+    case "zone":
+      vennGuess = Number(value);
+      say(vennSolved() ? "答對了！" : "再比較兩種動物。");
+      break;
+    case "restart":
+      batch = [];
       resetRound();
-      focus = {action:"card",value:"0"};
+      navigate("deck");
+      return;
       break;
   }
   render(focus);
@@ -247,6 +293,7 @@ activity.addEventListener("change", event => {
     say();
   }
   if (id === "left" || id === "right") {
+    vennGuess = null;
     pair[id === "left" ? 0 : 1] = value;
     say(`已更新${pair.map(id=>animals.find(a=>a.id===id).name).join("和")}的維恩圖。`);
   }
