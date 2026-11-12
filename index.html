@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e8eee7">
+  <title>動物偵探｜二分法與維恩圖</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="animals.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="sheet">
+    <header class="masthead">
+      <h1>動物偵探</h1>
+      <button id="fullscreen" class="quiet" type="button" aria-label="進入全螢幕">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></svg>
+        <span>全螢幕</span>
+      </button>
+    </header>
+    <nav class="tabs" aria-label="學習活動">
+      <button data-tab="deck" aria-current="page">選圖卡</button>
+      <button data-tab="tree">二分法</button>
+      <button data-tab="venn">維恩圖</button>
+      <button data-tab="quiz">辨認挑戰</button>
+    </nav>
+    <main id="activity" tabindex="-1"></main>
+    <footer id="status" role="status" aria-live="polite"></footer>
+  </div>
+</body>
+</html>
