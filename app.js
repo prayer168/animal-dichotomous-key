@@ -1,445 +1,288 @@
 const activity = document.querySelector("#activity");
 const status = document.querySelector("#status");
-const lookup = Object.fromEntries(animals.map(animal => [animal.id, animal]));
-const questionById = Object.fromEntries(questions.map(question => [question.id, question]));
-const sharedQuestions = questions.filter(question => Object.hasOwn(traits, question.id));
-const tabButtons = [...document.querySelectorAll("[data-tab]")];
-const size = matchMedia("(max-width: 690px)");
-const short = matchMedia("(max-height: 650px)");
-const escape = value => String(value).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll('"',"&quot;");
-const questionText = question => question.label + "嗎？";
-const animalNames = ids => ids.map(id => lookup[id].name).join("、");
+const tabs = [...document.querySelectorAll("[data-tab]")];
+const compact = matchMedia("(max-width: 660px), (max-height: 500px)");
+const pools = [animals.filter(a => a.group === 0), animals.filter(a => a.group === 1 || a.group === 2), animals.filter(a => a.group === 3)];
+const landMovements = [
+  pools[1].filter(a => a.group === 1),
+  pools[1].filter(a => ["elephant", "giraffe", "panda", "camel", "rhino", "hippo"].includes(a.id)),
+  pools[1].filter(a => ["zebra", "tiger", "goat", "ostrich"].includes(a.id))
+];
+const featureList = Object.entries(traits).map(([id, label]) => ({
+  id, label, test: animal => id === "legs" ? !animal.flags.includes("zero") : animal.flags.includes(id)
+}));
+const features = Object.fromEntries(featureList.map(feature => [feature.id, feature]));
 
-let selected = [...presets[0][1]];
 let tab = "deck";
-let filter = "all";
-let page = 0;
-let root;
-let activePath;
-let history;
-let draft;
-let mapView;
-let venn;
-let quiz;
-let teacher = false;
+let drawCount = 9;
+let batch = [];
+let deckPage = 0;
+let questionId = "wings";
+let placements = new Map();
+let current = 0;
+let checked = false;
+const pair = ["butterfly", "spider"];
 
-function resetActivities() {
-  root = { ids: [...selected] };
-  activePath = [];
-  history = [];
-  draft = null;
-  mapView = false;
-  venn = { a: "wings", b: "six", entries: {}, review: false, pending: false };
-  quiz = null;
+function shuffle(items) {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
 
-resetActivities();
+function sample(count) {
+  const extra = shuffle([0, 1, 2]).slice(0, count % 3);
+  return shuffle(pools.flatMap((pool, index) => {
+    const quantity = Math.floor(count / 3) + Number(extra.includes(index));
+    if (index !== 1) return shuffle(pool).slice(0, quantity);
+    const required = shuffle(landMovements).map(group => shuffle(group)[0]).slice(0, quantity);
+    return [...required, ...shuffle(pool.filter(animal => !required.includes(animal))).slice(0, quantity - required.length)];
+  }));
+}
 
-function say(message = "", error = false) {
+function say(message = "") {
   status.textContent = message;
-  status.dataset.error = error;
 }
-function action(name, label, options = {}) {
-  const { value, disabled, primary, pressed, className = "", title } = options;
-  return `<button type="button" data-action="${name}" ${value !== undefined ? `data-value="${escape(value)}"` : ""}
-    ${disabled ? "disabled" : ""} ${pressed !== undefined ? `aria-pressed="${pressed}"` : ""}
-    ${title ? `aria-label="${escape(title)}"` : ""} class="${className} ${primary ? "primary" : ""}">${label}</button>`;
+
+function resetRound() {
+  placements = new Map();
+  current = 0;
+  checked = false;
 }
-function image(id, mystery = false) {
-  const animal = lookup[id];
-  return `<img src="assets/${id}.svg" width="240" height="160" alt="${mystery ? escape(animal.clue) : ""}">`;
+
+function button(action, label, { value = "", disabled = false, style = "", pressed } = {}) {
+  return `<button type="button" data-action="${action}" data-value="${value}" class="${style}" ${disabled ? "disabled" : ""}
+    ${pressed === undefined ? "" : `aria-pressed="${pressed}"`}>${label}</button>`;
 }
-function figure(id, mystery = false, draggable = false) {
-  return `<figure class="panel focus-animal" ${draggable ? 'draggable="true"' : ""}>${image(id, mystery)}<figcaption>${mystery ? "觀察未知動物" : escape(lookup[id].name)}</figcaption></figure>`;
+
+function select(id, label, choices, selected) {
+  return `<label for="${id}">${label}<select id="${id}">${choices.map(([value, text]) =>
+    `<option value="${value}" ${String(value) === String(selected) ? "selected" : ""}>${text}</option>`).join("")}</select></label>`;
 }
-function options(items, current) {
-  return items.map(([id, label]) => `<option value="${escape(id)}" ${String(id) === String(current) ? "selected" : ""}>${escape(label)}</option>`).join("");
-}
-function picker(id, label, items, current) {
-  return `<select id="${id}" aria-label="${label}">${options(items, current)}</select>`;
-}
-function shell(title, body, controls = "", type = "") {
-  return `<section class="screen ${type}"><h2>${title}</h2>${body}<div class="actions">${controls}</div></section>`;
+
+function picture(animal, draggable = false) {
+  return `<figure class="picture" ${draggable ? 'draggable="true"' : ""}>
+    <img src="assets/${animal.id}.svg" width="240" height="160" alt="" draggable="false">
+    <figcaption>${animal.name}</figcaption>
+  </figure>`;
 }
 
 function deck() {
-  const columns = size.matches ? 2 : 4;
-  const limit = columns * (short.matches ? 1 : 2);
-  const visible = animals.filter(animal => filter === "all" || (filter === "selected" ? selected.includes(animal.id) : animal.group === Number(filter)));
-  const pages = Math.max(1, Math.ceil(visible.length / limit));
-  page = Math.min(page, pages - 1);
-  const cards = visible.slice(page * limit, (page + 1) * limit);
-  return `<section class="screen deck">
-    <div class="deck-head"><h2>選擇 2～8 張圖卡</h2><div class="tools">
-      ${picker("group","依移動情境篩選",[["all","全部 40 種"],...groups.map((group,i)=>[i,group]),["selected","已選圖卡"]],filter)}
-      ${picker("preset","使用現成題組",[["","載入題組"],...presets.map(([label],i)=>[i,label])],"")}
-    </div></div>
-    <div class="deck-grid" style="--columns:${columns}">${cards.length ? cards.map(animal =>
-      action("card",image(animal.id) + `<span>${escape(animal.name)}</span>`,{value:animal.id,pressed:selected.includes(animal.id),className:"animal"})
-    ).join("") : "<p>目前沒有選取圖卡。可切換上方分類或載入題組。</p>"}</div>
-    <div class="pager">
-      ${action("page","上一頁",{value:-1,disabled:page===0})}
-      <span aria-label="目前頁碼">${page+1} / ${pages}</span>
-      ${action("page","下一頁",{value:1,disabled:page+1===pages})}
-      <div class="tools">${action("clear","清空",{disabled:!selected.length})}
-      ${action("start",`開始（${selected.length}）`,{disabled:selected.length<2,primary:true})}</div>
-    </div>
-  </section>`;
+  const counts = select("draw-count", "圖卡張數", [8,9,10,11,12].map(n => [n, n + " 張"]), drawCount);
+  const controls = `<div class="bar"><h2>抽取動物圖卡</h2><div class="tools">${counts}
+    ${button("draw", "隨機抽圖卡", {style: "primary"})}</div></div>`;
+  if (!batch.length) return `<section class="screen">${controls}
+    <div class="intro"><div class="sample-pictures">${["swallow","zebra","turtle"].map(id => picture(animals.find(a=>a.id===id))).join("")}</div>
+    <p>從空中、陸地和水中平均抽取 8～12 種動物。</p></div></section>`;
+  const pageSize = compact.matches ? 4 : 12;
+  const pages = Math.ceil(batch.length / pageSize);
+  deckPage = Math.min(deckPage, pages - 1);
+  const groupCounts = pools.map(pool => batch.filter(animal => pool.includes(animal)).length);
+  return `<section class="screen">${controls}
+    <div class="gallery">${batch.slice(deckPage * pageSize, (deckPage + 1) * pageSize).map(a=>picture(a)).join("")}</div>
+    <div class="bar deck-footer"><p>空中 ${groupCounts[0]} ・陸地 ${groupCounts[1]} ・水中 ${groupCounts[2]}</p>
+      ${pages > 1 ? `<div class="tools">${button("deck-page","上一頁",{value:-1,disabled:deckPage===0})}
+      <span>${deckPage+1} / ${pages}</span>${button("deck-page","下一頁",{value:1,disabled:deckPage===pages-1})}</div>` : ""}
+      ${button("go","開始二分法",{value:"tree",style:"primary"})}</div></section>`;
 }
 
-const getNode = path => path.reduce((node, side) => node[side], root);
-const splitIds = (ids, question) => ({
-  yes: ids.filter(id => question.test(lookup[id])),
-  no: ids.filter(id => !question.test(lookup[id]))
-});
-const firstOpen = (node, path = []) => node.ids.length === 1 ? null :
-  node.question ? firstOpen(node.yes,[...path,"yes"]) ?? firstOpen(node.no,[...path,"no"]) : path;
-const ancestors = path => path.map((side,i) => ({ side, node: getNode(path.slice(0,i)) }));
-function workingDraft(node) {
-  if (!draft) {
-    const candidate = questions.find(question => {
-      const split = splitIds(node.ids, question);
-      return split.yes.length && split.no.length;
-    });
-    draft = { id: candidate.id, answers: {}, checked: false };
-  }
-  return draft;
-}
-function tree() {
-  if (compareTree) return comparison();
-  if (selected.length < 2) return empty("二分法","先在圖卡庫選至少兩種動物。");
-  const node = getNode(activePath);
-  const trail = ancestors(activePath);
-  const parent = action("parent","上層分支",{disabled:!activePath.length});
-  const next = firstOpen(root);
-  const undo = action("undo","撤銷分組",{disabled:!history.length});
-  const toggle = action("map",mapView ? "回到分組" : "查看分支");
-  if (mapView || node.question || node.ids.length === 1) {
-    const example = node.ids[0];
-    const last = trail.at(-1);
-    const branch = node.question ? `<h3>${escape(questionText(questionById[node.question]))}</h3>
-      <div class="branch-lines" aria-hidden="true"></div><div class="branches">${["yes","no"].map(side => action("branch",
-        `${side === "yes" ? "是" : "否"} · ${node[side].ids.length} 張`,{value:side})).join("")}</div>
-      <p class="branch-meta">${escape(animalNames(node.ids))}</p>`
-      : `<h3>${node.ids.length === 1 ? "辨認結果" : "這組還能繼續分"}</h3><p>${escape(animalNames(node.ids))}</p>`;
-    return shell("沿著二分樹查看分支",`<div class="workspace tree-map">${figure(example)}<div class="panel trail">
-      <p class="branch-meta">${last ? `第 ${activePath.length} 層 · ${escape(last.node.question ? questionById[last.node.question].label : "")} → ${last.side === "yes" ? "是" : "否"}` : "起點 · 全部所選圖卡"}</p>
-      ${branch}</div></div>`,
-      parent + undo + (node.question || node.ids.length === 1
-        ? next ? action("next-open","下一個待分組",{primary:true}) : action("quiz","開始辨認",{primary:true})
-        : toggle));
-  }
-  const current = workingDraft(node);
-  const unanswered = node.ids.find(id => !(id in current.answers));
-  const question = questionById[current.id];
-  const split = splitIds(node.ids,question);
-  const answerCount = Object.keys(current.answers).length;
-  const picture = unanswered || node.ids[0];
-  const manual = `<h3>${escape(questionText(question))}</h3>
-    <div class="answers">${action("classify","是",{value:"yes",disabled:!unanswered})}
-    ${action("classify","否",{value:"no",disabled:!unanswered})}</div>
-    <p class="branch-meta">已分 ${answerCount} / ${node.ids.length} 張</p>`;
-  const revealed = `<div class="branches"><div><strong>是 · ${split.yes.length} 張</strong><p>${escape(animalNames(split.yes) || "空組")}</p></div>
-    <div><strong>否 · ${split.no.length} 張</strong><p>${escape(animalNames(split.no) || "空組")}</p></div></div>
-    ${split.yes.length && split.no.length ? action("save-split","加入二分樹",{primary:true}) :
-      '<p class="branch-meta">這個問題沒把動物分成兩組。換一個條件試試。</p>'}`;
-  return shell("用一個問題分成兩組",`<div class="workspace">${figure(picture)}
-    <div class="panel controls"><label for="question">選擇特徵問題</label>
-    ${picker("question","選擇特徵問題",questions.filter(q => Object.hasOwn(traits,q.id) || node.ids.includes(q.id)).map(q=>[q.id,questionText(q)]),current.id)}
-    ${current.checked ? revealed : manual}</div></div>`,
-    parent + undo + toggle +
-    (current.checked ? "" : teacher ? action("reveal","揭曉分組",{primary:true}) : action("reveal",unanswered ? "查看正確分組" : "核對分組",{primary:!unanswered})));
-}
-function empty(title, description, button = "前往選圖卡", destination = "deck") {
-  return shell(title,`<div class="panel result"><p>${description}</p><div>${action("navigate",button,{value:destination,primary:true})}</div></div>`);
+function answer(animal) {
+  return features[questionId].test(animal) ? "yes" : "no";
 }
 
-const zoneNames = ["只符合甲","甲乙都符合","只符合乙","都不符合"];
-const vennZone = id => {
-  const a = questionById[venn.a].test(lookup[id]);
-  const b = questionById[venn.b].test(lookup[id]);
-  return a ? (b ? 1 : 0) : (b ? 2 : 3);
+const sideLabel = { yes: "是", no: "否" };
+const clues = {
+  wings: "觀察身體兩側有沒有翅膀。",
+  legs: "看牠有沒有用來在地面移動的腳。",
+  six: "數一數牠的腳，觸角和翅膀不算在內。",
+  feather: "觀察翅膀、尾巴或體表有沒有羽毛。",
+  four: "數一數牠用來步行的腳。",
+  shell: "觀察背上有沒有明顯的硬殼。",
+  fin: "觀察是否有魚類的鰭。",
+  eight: "數一數步足，靠近嘴巴的觸肢不算在內。",
+  two: "數一數牠用來步行的腳。"
 };
-function vennScreen() {
-  if (selected.length < 2) return empty("維恩圖","先在圖卡庫選至少兩種動物。");
-  const current = selected.find(id => !(id in venn.entries));
-  const assigned = Object.keys(venn.entries).length;
-  const count = zone => Object.values(venn.entries).filter(value => value === zone).length;
-  const zoneButton = zone => action("zone",`${zoneNames[zone]}<span class="zone-count">${count(zone)} 張</span>`,
-    {value:zone, title:`${zoneNames[zone]}，${count(zone)} 張`,className:zone===3?"outside":"",disabled:venn.pending});
-  const board = `<div class="panel venn-board" aria-label="維恩圖">
-    <div class="venn-zones">
-      <svg viewBox="0 0 410 220" preserveAspectRatio="none" aria-hidden="true">
-        <ellipse cx="139" cy="110" rx="134" ry="102" fill="#f2dacb"/>
-        <ellipse cx="271" cy="110" rx="134" ry="102" fill="#dce8e4" style="mix-blend-mode:multiply"/>
-        <ellipse cx="139" cy="110" rx="134" ry="102" fill="none" stroke="#8c3d2e" stroke-width="2.5"/>
-        <ellipse cx="271" cy="110" rx="134" ry="102" fill="none" stroke="#295844" stroke-width="2.5"/>
-      </svg>${[0,1,2].map(zoneButton).join("")}
-    </div>${zoneButton(3)}</div>`;
-  const review = venn.review !== false && `<div class="panel result"><h3>${zoneNames[venn.review]}</h3>
-    <p>${escape(animalNames(selected.filter(id=>venn.entries[id]===venn.review)) || "這區目前是空的。")}</p>
-    <p>分別問一次甲和乙，二分樹的兩次答案會對應到這個區域。</p>
-    <div>${action("venn-back","返回維恩圖")}</div></div>`;
-  const lead = `<div class="venn-select">
-    <label for="venn-a">條件甲${picker("venn-a","條件甲",sharedQuestions.filter(q=>q.id!==venn.b).map(q=>[q.id,q.label]),venn.a)}</label>
-    <label for="venn-b">條件乙${picker("venn-b","條件乙",sharedQuestions.filter(q=>q.id!==venn.a).map(q=>[q.id,q.label]),venn.b)}</label>
-    </div>`;
-  return `<section class="screen"><div>${lead}</div>
-    <div class="workspace venn-workspace">
-      ${current && !review ? figure(current,false,true) : `<div class="panel result"><h2>${review ? "查看區域" : venn.pending ? "預測完成" : "完成維恩圖"}</h2><p>${review ? "查看這個區域的動物。" : venn.pending ? "按「揭曉位置」和全班一起核對。" : "點選各區域查看動物，或把同樣兩個條件轉成二分樹。"}</p></div>`}
-      ${review || board}
+
+function tree() {
+  if (!batch.length) return `<section class="screen"><h2>二分法</h2><div class="intro">
+    <p>先抽一組動物圖卡，再用一個條件分成兩組。</p>
+    <div>${button("go","前往抽圖卡",{value:"deck",style:"primary"})}</div></div></section>`;
+  const animal = batch[current];
+  const currentSide = placements.get(animal.id);
+  const question = features[questionId];
+  const yesTotal = batch.filter(a=>answer(a)==="yes").length;
+  const canSplit = yesTotal > 0 && yesTotal < batch.length;
+  const mistakes = checked ? batch.filter(a=>placements.get(a.id)!==answer(a)) : [];
+  const wrong = checked && currentSide !== answer(animal);
+  const bucket = side => {
+    const count = batch.filter(a => (checked ? answer(a) : placements.get(a.id)) === side).length;
+    return button("place",`<strong>${sideLabel[side]}</strong><span>${side === "yes" ? "符合條件" : "不符合條件"}</span><small>${count} 張</small>`,
+      {value:side, disabled:!canSplit || checked, pressed:checked ? answer(animal)===side : currentSide===side, style:"bucket"});
+  };
+  const prompt = checked
+    ? mistakes.length ? `答對 ${batch.length - mistakes.length} / ${batch.length} 張。用下方圖卡編號查看每張的答案。` : `你用同一個條件，正確分完了 ${batch.length} 張圖卡！`
+    : canSplit ? "把圖卡拖到「是」或「否」，也可以直接點選放置區。" : "這個條件會把所有圖卡放在同一邊，請換一個條件。";
+  const detail = checked
+    ? `${wrong ? "再觀察。你放在「" + sideLabel[currentSide] + "」，正確是「" + sideLabel[answer(animal)] + "」。" : "放對了。"}${clues[questionId]}`
+    : currentSide ? `已放在「${sideLabel[currentSide]}」，可點另一側改放。` : "";
+  return `<section class="screen tree">
+    <div class="bar"><div><h2>用一個條件分成兩組</h2><p class="definition">符合條件的分一組，其餘分另一組。</p></div>
+    ${select("question","分類條件",featureList.map(f=>[f.id,f.label+"嗎？"]),questionId)}</div>
+    <div class="sort-area">
+      <p class="prompt">${prompt}</p>
+      <div class="sort-card">${picture(animal,canSplit && !checked)}</div>
+      <div class="buckets">${bucket("yes")}${bucket("no")}</div>
+      <p class="card-feedback" aria-live="polite">${detail}</p>
     </div>
-    <div class="actions">
-      <strong>已放 ${assigned} / ${selected.length} 張</strong>
-      ${action("venn-reset","重放",{disabled:!assigned})}
-      ${teacher && (assigned < selected.length || venn.pending) ? action("venn-reveal","揭曉位置",{primary:true}) : ""}
-      ${assigned === selected.length && !venn.pending ? action("compare","對照二分樹",{primary:true}) : ""}
-    </div>
+    <div class="round-footer"><div class="card-index" aria-label="切換圖卡">${batch.map((a,i)=>{
+      const placed = placements.get(a.id);
+      const mark = checked ? (placed===answer(a) ? " ✓" : " ↺") : placed ? " ·" : "";
+      const info = checked ? (placed===answer(a) ? "，正確" : "，需修正") : placed ? "，已放置" : "，待分類";
+      return button("card",`<span aria-hidden="true">${i+1}${mark}</span><span class="sr-only">第 ${i+1} 張，${a.name}${info}</span>`,
+        {value:i,pressed:i===current});
+    }).join("")}</div>
+    <div class="bar"><strong>已放 ${placements.size} / ${batch.length} 張</strong>
+      ${checked ? button("retry","再分一次",{style:"primary"}) :
+        button("check","檢查答案",{disabled:placements.size!==batch.length,style:"primary"})}</div></div>
   </section>`;
 }
 
-function initializeQuiz() {
-  const previous = quiz?.id;
-  const choices = selected.filter(id => id !== previous);
-  quiz = { id: choices[Math.floor(Math.random()*choices.length)], path: [], done: false };
-}
-function quizScreen() {
-  if (selected.length < 2 || firstOpen(root)) return empty("辨認挑戰","完成二分樹，才能沿著問題辨認未知動物。","前往二分法","tree");
-  if (!quiz) initializeQuiz();
-  const node = getNode(quiz.path);
-  return shell(quiz.done ? "辨認成功" : "沿著二分樹找出牠",
-    `<div class="workspace">${figure(quiz.id,!quiz.done)}<div class="panel controls">
-      ${quiz.done ? `<h3>${escape(lookup[quiz.id].name)}</h3><p>你回答了 ${quiz.path.length} 個特徵問題。</p>` :
-        `<h3>${escape(questionText(questionById[node.question]))}</h3>
-        <div class="answers">${action("guess","是",{value:"yes"})}${action("guess","否",{value:"no"})}</div>`}
-    </div></div>`,
-    quiz.done ? action("another","再辨認一隻",{primary:true}) :
-    `<strong>第 ${quiz.path.length+1} 個問題</strong>` + action("hint","給我提示"));
+function venn() {
+  const [left, right] = pair.map(id=>animals.find(a=>a.id===id));
+  const choices = animal => animals.filter(a=>a!==animal).map(a=>[a.id,a.name]);
+  const labels = [[],[],[]];
+  for (const feature of featureList) {
+    const inLeft = feature.test(left);
+    const inRight = feature.test(right);
+    if (inLeft || inRight) labels[inLeft ? Number(inRight) : 2].push(feature.label);
+  }
+  return `<section class="screen compare">
+    <div><h2>比較兩種動物</h2>
+      <div class="pair-select">${select("left","左圈",choices(right),left.id)}${select("right","右圈",choices(left),right.id)}</div>
+    </div>
+    <div class="pair-pictures">${picture(left)}${picture(right)}</div>
+    <div class="venn" aria-label="兩種動物的維恩圖">
+      <svg viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true">
+        <ellipse cx="205" cy="110" rx="199" ry="105" fill="#f2dacb" stroke="#8c3d2e" stroke-width="2"/>
+        <ellipse cx="395" cy="110" rx="199" ry="105" fill="#cce3db" stroke="#295844" stroke-width="2" style="mix-blend-mode:multiply"/>
+      </svg>
+      ${["左邊獨有","共同特徵","右邊獨有"].map((label,i)=>`<section><h3>${label}</h3>
+        ${labels[i].length ? `<ul>${labels[i].map(item=>`<li>${item}</li>`).join("")}</ul>` : "<p>目前無項目</p>"}</section>`).join("")}
+    </div></section>`;
 }
 
-function render(focus = null) {
-  tabButtons.forEach(button => {
+function render(focus) {
+  for (const button of tabs) {
     if (button.dataset.tab === tab) button.setAttribute("aria-current","page");
     else button.removeAttribute("aria-current");
-  });
-  activity.innerHTML = {deck,tree,venn:vennScreen,quiz:quizScreen}[tab]();
-  if (focus) {
-    const replacement = focus.id ? document.getElementById(focus.id) :
-      [...activity.querySelectorAll("[data-action]")].find(button =>
-        button.dataset.action === focus.dataset.action && button.dataset.value === focus.dataset.value && !button.disabled);
-    (replacement || activity).focus({preventScroll:true});
   }
+  activity.innerHTML = {deck,tree,venn}[tab]();
+  if (!focus) return;
+  const element = focus.id ? document.getElementById(focus.id) :
+    [...activity.querySelectorAll("[data-action]:enabled")].find(button =>
+      button.dataset.action === focus.action && button.dataset.value === focus.value);
+  (element || activity).focus({preventScroll:true});
 }
+
 function navigate(destination) {
   tab = destination;
   say();
   render();
   activity.focus({preventScroll:true});
 }
-function changeSelection(ids) {
-  selected = ids;
-  resetActivities();
-  say(`已選 ${selected.length} 張圖卡。`);
-}
-function selectNext() {
-  activePath = firstOpen(root) ?? [];
-  mapView = !firstOpen(root);
-  draft = null;
-  quiz = null;
-}
-function hintText(question) {
-  return Object.hasOwn(traits,question.id) ? `再觀察圖上的線索，想想牠是否「${question.label}」。` :
-    `仔細對照這個線索：${question.label}。`;
+
+function place(side) {
+  placements.set(batch[current].id, side);
+  const next = batch.findIndex((animal,index)=>index>current && !placements.has(animal.id));
+  const first = batch.findIndex(animal=>!placements.has(animal.id));
+  if (next !== -1 || first !== -1) current = next !== -1 ? next : first;
 }
 
-const handlers = {
-  navigate: value => navigate(value),
-  card: value => {
-    if (selected.includes(value)) changeSelection(selected.filter(id=>id!==value));
-    else if (selected.length < 8) changeSelection([...selected,value]);
-    else say("一次最多選 8 張。取消一張後再加入。",true);
-  },
-  page: value => { page += Number(value); },
-  clear: () => changeSelection([]),
-  start: () => navigate("tree"),
-  parent: () => { activePath.pop(); draft=null; mapView=true; },
-  branch: value => { activePath.push(value); draft=null; mapView=true; },
-  map: () => { mapView=!mapView; },
-  "next-open": () => { selectNext(); },
-  undo: () => {
-    activePath = history.pop();
-    const node = getNode(activePath);
-    delete node.question;
-    delete node.yes;
-    delete node.no;
-    draft=null; mapView=false; quiz=null;
-    say("已撤銷最後一次分組。");
-  },
-  classify: value => {
-    const node=getNode(activePath);
-    const id=node.ids.find(animal=>!(animal in draft.answers));
-    if (!id) return;
-    draft.answers[id]=value;
-    say(`已把${lookup[id].name}放到「${value==="yes"?"是":"否"}」。`);
-  },
-  reveal: () => {
-    draft.checked=true;
-    const question=questionById[draft.id];
-    const errors=Object.entries(draft.answers).filter(([id,value])=>question.test(lookup[id])!==(value==="yes")).map(([id])=>id);
-    say(errors.length ? `再觀察 ${errors.length} 張：${animalNames(errors)}。` : "已顯示正確分組。",Boolean(errors.length));
-  },
-  "save-split": () => {
-    const node=getNode(activePath);
-    const split=splitIds(node.ids,questionById[draft.id]);
-    node.question=draft.id;
-    node.yes={ids:split.yes};
-    node.no={ids:split.no};
-    history.push([...activePath]);
-    selectNext();
-    say(firstOpen(root) ? "已加入分支。繼續分下一組。" : "二分樹完成，可以開始辨認。");
-  },
-  zone: value => {
-    if (venn.pending) return;
-    const id=selected.find(animal=>!(animal in venn.entries));
-    const zone=Number(value);
-    if (!id) { venn.review=zone; return; }
-    if (vennZone(id)!==zone && !teacher) {
-      say("把甲、乙分開判斷，再選一次位置。",true);
-      return;
-    }
-    venn.entries[id]=zone;
-    venn.pending=teacher && Object.keys(venn.entries).length===selected.length;
-    say(teacher ? "已記下預測。" : "放對了。");
-  },
-  "venn-back": () => { venn.review=false; },
-  "venn-reset": () => { venn.entries={}; venn.review=false; venn.pending=false; },
-  "venn-reveal": () => {
-    venn.entries=Object.fromEntries(selected.map(id=>[id,vennZone(id)]));
-    venn.pending=false;
-    say("已揭曉各區正確位置。");
-  },
-  compare: () => {
-    tab="tree";
-    compareTree=true;
-    compareSide=null;
-    say("先看條件甲，再展開兩邊看條件乙。");
-  },
-  quiz: () => navigate("quiz"),
-  guess: value => {
-    const node=getNode(quiz.path);
-    const question=questionById[node.question];
-    if (question.test(lookup[quiz.id])!==(value==="yes")) {
-      say(hintText(question),true);
-      return;
-    }
-    quiz.path.push(value);
-    quiz.done=getNode(quiz.path).ids.length===1;
-    say(quiz.done ? "辨認成功！" : "這個特徵符合。繼續下一題。");
-  },
-  hint: () => say(hintText(questionById[getNode(quiz.path).question])),
-  another: () => initializeQuiz(),
-  teacher: () => {
-    teacher=!teacher;
-    if (!teacher && Object.entries(venn.entries).some(([id,zone])=>vennZone(id)!==zone)) {
-      venn.entries={};
-      venn.review=false;
-    }
-    if (!teacher) venn.pending=false;
-    say(teacher?"教師示範模式已開啟。":"回到學生練習模式。");
-  }
-};
-
-let compareTree=false;
-let compareSide=null;
-function comparison() {
-  const conditionA=questionById[venn.a];
-  const conditionB=questionById[venn.b];
-  const zoneInfo=zone=>`<div><h3>${zoneNames[zone]}</h3><p>${escape(animalNames(selected.filter(id=>vennZone(id)===zone)) || "空組")}</p></div>`;
-  const content=compareSide===null
-    ? `<h3>甲 · ${escape(questionText(conditionA))}</h3><div class="branches">
-      ${action("compare-side","是",{value:"yes"})}${action("compare-side","否",{value:"no"})}</div>`
-    : `<p>條件甲的答案是「${compareSide==="yes"?"是":"否"}」</p>
-      <h3>乙 · ${escape(questionText(conditionB))}</h3><div class="branches">
-      ${compareSide==="yes" ? zoneInfo(1)+zoneInfo(0) : zoneInfo(2)+zoneInfo(3)}</div>`;
-  return shell("同一組條件的二分樹",`<div class="panel result">${content}</div>`,
-    (compareSide===null?"":action("compare-root","回到條件甲")) + action("exit-compare","返回維恩圖",{primary:true}));
-}
-handlers["compare-side"]=value=>{compareSide=value;};
-handlers["compare-root"]=()=>{compareSide=null;};
-handlers["exit-compare"]=()=>{
-  compareTree=false; compareSide=null; navigate("venn");
-};
-
-activity.addEventListener("click",event=>{
-  const button=event.target.closest("[data-action]");
-  if (!button) return;
+activity.addEventListener("click", event => {
+  const target = event.target.closest("[data-action]");
+  if (!target) return;
+  const { action, value } = target.dataset;
+  if (action === "go") { navigate(value); return; }
   say();
-  handlers[button.dataset.action](button.dataset.value);
-  if (!["navigate","start","quiz","exit-compare"].includes(button.dataset.action)) render(button);
-});
-activity.addEventListener("dragstart",event=>{
-  if (tab!=="venn" || !event.target.closest("figure[draggable=true]")) return;
-  event.dataTransfer.setData("text/plain","animal-card");
-  event.dataTransfer.effectAllowed="move";
-});
-activity.addEventListener("dragover",event=>{
-  if (event.target.closest('button[data-action="zone"]:enabled')) event.preventDefault();
-});
-activity.addEventListener("drop",event=>{
-  const target=event.target.closest('button[data-action="zone"]:enabled');
-  if (!target || event.dataTransfer.getData("text/plain")!=="animal-card") return;
-  event.preventDefault();
-  target.click();
-});
-activity.addEventListener("change",event=>{
-  const control=event.target;
-  if (control.id==="group") { filter=control.value; page=0; }
-  if (control.id==="preset" && control.value!=="") {
-    changeSelection([...presets[Number(control.value)][1]]);
-    filter="selected"; page=0;
+  let focus = {action,value};
+  switch (action) {
+    case "draw":
+      batch = sample(drawCount);
+      deckPage = 0;
+      questionId = "wings";
+      resetRound();
+      say(`已抽出 ${batch.length} 張圖卡。`);
+      break;
+    case "deck-page": deckPage += Number(value); break;
+    case "card": current = Number(value); break;
+    case "place":
+      say(`${batch[current].name}已放在「${sideLabel[value]}」。`);
+      place(value);
+      if (placements.size === batch.length) focus = {action:"check",value:""};
+      break;
+    case "check": {
+      checked = true;
+      const firstWrong = batch.findIndex(animal=>placements.get(animal.id)!==answer(animal));
+      if (firstWrong !== -1) current = firstWrong;
+      say(firstWrong === -1 ? "全部正確！" : "已顯示正確分組。");
+      focus = {action:"card",value:String(current)};
+      break;
+    }
+    case "retry":
+      resetRound();
+      focus = {action:"card",value:"0"};
+      break;
   }
-  if (control.id==="question") draft={id:control.value,answers:{},checked:false};
-  if (control.id==="venn-a" || control.id==="venn-b") {
-    venn[control.id.at(-1)]=control.value;
-    venn.entries={};
-    venn.review=false;
-    venn.pending=false;
-    say("已換條件，請重新放置圖卡。");
-  }
-  render(control);
+  render(focus);
 });
-tabButtons.forEach(button=>button.addEventListener("click",()=>{
-  compareTree=false; compareSide=null;
-  navigate(button.dataset.tab);
-}));
 
-const fullscreen=document.querySelector("#fullscreen");
-const teacherButton=document.createElement("button");
-teacherButton.type="button";
-teacherButton.className="quiet";
-teacherButton.textContent="教師示範";
-teacherButton.setAttribute("aria-pressed","false");
-const headerControls=document.createElement("div");
-headerControls.className="tools";
-fullscreen.before(headerControls);
-headerControls.append(teacherButton,fullscreen);
-teacherButton.addEventListener("click",()=>{
-  handlers.teacher();
-  teacherButton.setAttribute("aria-pressed",String(teacher));
-  render();
+activity.addEventListener("change", event => {
+  const {id,value} = event.target;
+  if (id === "draw-count") { drawCount = Number(value); return; }
+  if (id === "question") {
+    questionId = value;
+    resetRound();
+    say();
+  }
+  if (id === "left" || id === "right") {
+    pair[id === "left" ? 0 : 1] = value;
+    say(`已更新${pair.map(id=>animals.find(a=>a.id===id).name).join("和")}的維恩圖。`);
+  }
+  render({id});
 });
-fullscreen.addEventListener("click",async()=>{
+
+activity.addEventListener("dragstart", event => {
+  if (!event.target.closest('.sort-card figure[draggable="true"]')) return;
+  event.dataTransfer.setData("text/plain",batch[current].id);
+  event.dataTransfer.effectAllowed = "move";
+});
+activity.addEventListener("dragover", event => {
+  if (event.target.closest(".bucket:enabled")) event.preventDefault();
+});
+activity.addEventListener("drop", event => {
+  const bucket = event.target.closest(".bucket:enabled");
+  if (!bucket || event.dataTransfer.getData("text/plain") !== batch[current].id) return;
+  event.preventDefault();
+  bucket.click();
+});
+
+tabs.forEach(button=>button.addEventListener("click",()=>navigate(button.dataset.tab)));
+compact.addEventListener("change",()=>render());
+
+const fullscreen = document.querySelector("#fullscreen");
+fullscreen.addEventListener("click", async () => {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
-    else if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
-    else say("此瀏覽器可使用自己的全螢幕或隱藏工具列功能。",true);
-  } catch { say("無法進入全螢幕，請使用瀏覽器的全螢幕功能。",true); }
+    else await document.documentElement.requestFullscreen();
+  } catch {
+    say("請使用瀏覽器的全螢幕功能。");
+  }
 });
 document.addEventListener("fullscreenchange",()=>{
-  const label=document.fullscreenElement?"離開全螢幕":"全螢幕";
-  fullscreen.querySelector("span").textContent=label;
-  fullscreen.setAttribute("aria-label",label);
+  const label = document.fullscreenElement ? "離開全螢幕" : "全螢幕";
+  fullscreen.querySelector("span").textContent = label;
+  fullscreen.setAttribute("aria-label", label);
 });
-size.addEventListener("change",()=>render());
-short.addEventListener("change",()=>render());
 render();

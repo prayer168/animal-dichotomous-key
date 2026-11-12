@@ -1,7 +1,6 @@
-const groups = ["空中飛行", "貼地爬行", "陸上步行", "水中游動"];
 const traits = {
-  wings: "有翅膀", six: "有六隻腳", feather: "有羽毛", four: "有四隻步行用的腳",
-  shell: "背上有明顯的硬殼", fin: "有魚類的鰭", zero: "沒有步行用的腳",
+  wings: "有翅膀", legs: "有步行用的腳", six: "有六隻腳", feather: "有羽毛", four: "有四隻步行用的腳",
+  shell: "背上有明顯的硬殼", fin: "有魚類的鰭",
   eight: "有八隻步足", two: "有兩隻步行用的腳"
 };
 // The labels describe the illustrated adults, including caste or sex where specified.
@@ -47,17 +46,5 @@ const animals = [
   ["octopus","真蛸","頭部下方伸出八條帶吸盤的腕","zero"],
   ["jelly","海月水母","傘體內可見四個環狀構造","zero"]
 ].map(([id, name, clue, flags], i) => ({
-  id, name, clue, group: Math.floor(i / 10), flags: flags.split(" ")
+  id, name, clue, group: Math.floor(i / 10), flags: flags.split(" ").filter(Boolean)
 }));
-
-// Individual observations supplement shared features so every card can be identified.
-const questions = [
-  ...Object.entries(traits).map(([id, label]) => ({ id, label, test: animal => animal.flags.includes(id) })),
-  ...animals.map(({id, clue}) => ({id, label: clue, test: animal => animal.id === id}))
-];
-const presets = [
-  ["課堂示範", ["sparrow","dragonfly","ant","spider","butterfly","ostrich"]],
-  ["池塘與海邊", ["egret","kingfisher","dragonfly","alligator","turtle","octopus","clown","ray"]],
-  ["腳與外殼", ["snail","worm","ant","spider","centipede","millipede","tortoise","gecko"]],
-  ["四處看看", ["swallow","bee","snake","tortoise","elephant","zebra","shark","jelly"]]
-];
