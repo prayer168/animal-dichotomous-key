@@ -23,6 +23,7 @@ let current = 0;
 let checked = false;
 let sorted = false;
 let vennGuess = null;
+let vennChallenge = false;
 const pair = ["butterfly", "spider"];
 
 function shuffle(items) {
@@ -54,6 +55,7 @@ function resetRound() {
   checked = false;
   sorted = false;
   vennGuess = null;
+  vennChallenge = false;
 }
 
 function button(action, label, { value = "", disabled = false, style = "", pressed } = {}) {
@@ -142,7 +144,7 @@ function tree() {
     ${select("question","分類條件",featureList.map(f=>[f.id,f.label+"嗎？"]),questionId)}</div>
     <div class="sort-area">
       <p class="prompt">${prompt}</p>
-      <div class="sort-card">${picture(animal,canSplit && !checked)}</div>
+      <div class="sort-card"><span class="card-position">第 ${current + 1} / ${batch.length} 張</span>${picture(animal,canSplit && !checked)}</div>
       <div class="buckets">${bucket("yes")}${bucket("no")}</div>
       <p class="card-feedback" aria-live="polite">${detail}</p>
     </div>
@@ -169,6 +171,7 @@ function comparison() {
     const inRight = feature.test(right);
     if (inLeft || inRight) labels[inLeft ? Number(inRight) : 2].push(feature.label);
   }
+  if (!features.legs.test(left) && !features.legs.test(right)) labels[1].push("沒有步行用的腳");
   const correctZone = labels[1].length ? 1 : labels[0].length ? 0 : 2;
   return {left,right,labels,correctZone,challenge:labels[correctZone][0]};
 }
@@ -182,22 +185,24 @@ function venn() {
   const {left,right,labels,challenge} = comparison();
   const choices = animal => animals.filter(a=>a!==animal).map(a=>[a.id,a.name]);
   const solved = vennSolved();
+  const showFeatures = !vennChallenge || solved;
+  const question = showFeatures && solved
+    ? vennChallenge ? "任務完成！你找對了特徵所在的區域。" : "答對了！試著換一種動物比較。"
+    : `「${challenge}」應放在哪一區？${vennGuess===null ? "" : " 先判斷左邊有沒有這項特徵，再判斷右邊。"}`;
   return `<section class="screen compare">
     <div><h2>比較兩種動物</h2>
       <div class="pair-select">${select("left","左圈",choices(right),left.id)}${select("right","右圈",choices(left),right.id)}</div>
     </div>
     <div class="pair-pictures">${picture(left)}${picture(right)}</div>
-    <div class="venn" aria-label="兩種動物的維恩圖">
+    <div class="venn" role="group" aria-label="兩種動物的維恩圖" aria-describedby="venn-question">
       <svg viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true">
         <ellipse cx="205" cy="110" rx="199" ry="105" class="venn-left"/>
         <ellipse cx="395" cy="110" rx="199" ry="105" class="venn-right"/>
       </svg>
       ${["左邊獨有","共同特徵","右邊獨有"].map((label,i)=>`<section><h3>${button("zone",label,{value:i,pressed:vennGuess===i})}</h3>
-        ${labels[i].length ? `<ul>${labels[i].map(item=>`<li>${sorted && !solved && item===challenge ? "？" : item}</li>`).join("")}</ul>` : "<p>目前無項目</p>"}</section>`).join("")}
-    </div><div class="bar venn-footer"><p>${solved
-      ? sorted ? "任務完成！你找對了特徵所在的區域。" : "答對了！試著換一種動物比較。"
-      : challenge ? `「${challenge}」應放在哪一區？${vennGuess===null ? "" : " 再比較兩張圖卡。"}` : "換一種動物，試試看有哪些特徵。"}</p>
-      ${solved && sorted ? button("restart","再玩一輪",{style:"primary"}) : ""}</div></section>`;
+        ${showFeatures ? (labels[i].length ? `<ul>${labels[i].map(item=>`<li>${item}</li>`).join("")}</ul>` : "<p>無列出的特徵</p>") : ""}</section>`).join("")}
+    </div><div class="bar venn-footer ${solved ? "solved" : ""}"><p id="venn-question">${question}</p>
+      ${solved && vennChallenge ? button("restart","再玩一輪",{style:"primary"}) : ""}</div></section>`;
 }
 
 function render(focus) {
@@ -216,7 +221,11 @@ function render(focus) {
   (element || activity).focus({preventScroll:true});
 }
 
-function navigate(destination) {
+function navigate(destination, challenge = false) {
+  if (destination === "venn" && challenge !== vennChallenge) {
+    vennChallenge = challenge;
+    vennGuess = null;
+  }
   tab = destination;
   say();
   render();
@@ -234,7 +243,7 @@ activity.addEventListener("click", event => {
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const { action, value } = target.dataset;
-  if (action === "go") { navigate(value); return; }
+  if (action === "go") { navigate(value, value === "venn" && sorted); return; }
   say();
   let focus = {action,value};
   switch (action) {
@@ -289,8 +298,9 @@ activity.addEventListener("change", event => {
   if (id === "draw-count") { drawCount = Number(value); return; }
   if (id === "question") {
     questionId = value;
+    const hadPlacements = placements.size > 0;
     resetRound();
-    say();
+    say(hadPlacements ? "已更換條件，請用新條件重新分類。" : "");
   }
   if (id === "left" || id === "right") {
     vennGuess = null;
