@@ -65,7 +65,6 @@ main,.picture,.gallery { min-height: 0; min-width: 0; }
 .picture img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
 .picture figcaption { font-weight: 750; line-height: 1.18; padding: .2rem 0; overflow-wrap: anywhere; }
 .picture[draggable=true] { cursor: grab; }
-.definition { color: var(--muted); }
 .sort-area { display: grid; grid-template: auto minmax(0,1fr) auto / minmax(0,1fr) minmax(0,1fr); gap: .4rem; min-height: 0; }
 .prompt,.card-feedback { grid-column: 1/-1; font-weight: 700; }
 .card-feedback:empty { display: none; }
@@ -73,6 +72,13 @@ main,.picture,.gallery { min-height: 0; min-width: 0; }
 .sort-card { position: relative; }
 .card-position { position:absolute; top:.55rem; left:.65rem; padding:.16rem .48rem; border-radius:1rem; color:#21372e; background:#fff8dc; font-size:.85rem; font-weight:750; pointer-events:none; }
 .buckets { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; min-height: 0; }
+.branch-tree { display:grid; grid-template-rows:auto clamp(1rem, 5vh, 2.5rem) minmax(0,1fr); min-width:0; min-height:0; }
+.branch-root { justify-self:center; text-align:center; padding:.3rem .85rem; border:1px solid var(--gold); border-radius:1.4rem; background:var(--page); color:var(--gold); font-weight:750; }
+.branch-lines { display:block; width:100%; height:100%; fill:none; stroke:var(--green); }
+.branch-lines path { stroke-width:2; vector-effect:non-scaling-stroke; }
+.tree-setup .branch-tree { align-self:center; width:min(100%, 36rem); justify-self:center; }
+.tree-setup .bucket { min-height:5rem; }
+.tree-setup .bucket small { display:none; }
 .bucket { display: grid; align-content: center; justify-items: center; gap: .25rem; border: 2px dashed var(--line); padding-inline: .25rem; border-radius: 2rem; }
 .bucket[data-value=no] { border-color:#d7a777; }
 .bucket strong { font-size: 2rem; }
@@ -131,6 +137,8 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
   .sort-area { grid-template: auto minmax(0,1fr) auto auto / minmax(0,1fr); gap: .25rem; }
   .bucket { grid-template-columns: auto 1fr auto; align-items: center; padding-inline: .3rem; }
   .bucket strong { font-size: 1.3rem; }
+  .branch-tree { grid-template-rows:auto 1rem minmax(0,1fr); }
+  .tree-setup > .bar { flex-wrap:wrap; }
   .card-index { grid-template-columns: repeat(6,minmax(0,1fr)); }
   .venn { padding-inline: .25rem; }
   .opening { grid-template: auto minmax(0,1fr) / 1fr; align-items:stretch; }
@@ -146,6 +154,11 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
   h1 { font-size: 1.5rem; }
   .gallery { grid-template-columns: repeat(4,minmax(0,1fr)); }
   .sort-area { grid-template: auto minmax(0,1fr) auto / 1fr 1fr; }
+  .branch-tree { grid-template-rows:auto .65rem minmax(0,1fr); }
+  .branch-root { padding:.12rem .55rem; }
+  .bucket { grid-template-columns:auto 1fr auto; align-items:center; align-content:center; gap:.2rem; border-radius:1rem; }
+  .bucket strong { font-size:1.25rem; }
+  .bucket span,.bucket small { font-size:.85rem; }
   .compare { grid-template: auto minmax(0,1fr) auto / 1fr 1.4fr; }
   .compare > div:first-child { grid-column: 1/-1; }
   .venn-footer { grid-column:1/-1; }

@@ -21,6 +21,7 @@ let questionId = "wings";
 let placements = new Map();
 let current = 0;
 let checked = false;
+let treeReady = false;
 let sorted = false;
 let vennGuess = null;
 let vennChallenge = false;
@@ -50,6 +51,7 @@ function say(message = "") {
 }
 
 function resetRound() {
+  treeReady = false;
   placements = new Map();
   current = 0;
   checked = false;
@@ -131,8 +133,22 @@ function tree() {
   const bucket = side => {
     const count = batch.filter(a => (checked ? answer(a) : placements.get(a.id)) === side).length;
     return button("place",`<strong>${sideLabel[side]}</strong><span>${side === "yes" ? "符合條件" : "不符合條件"}</span><small>${count} 張</small>`,
-      {value:side, disabled:!canSplit || checked, pressed:checked ? answer(animal)===side : currentSide===side, style:"bucket"});
+      {value:side, disabled:!treeReady || checked, pressed:checked ? answer(animal)===side : currentSide===side, style:"bucket"});
   };
+  const branches = `<div class="branch-tree" role="group" aria-label="二分分類樹">
+    <p class="branch-root">${features[questionId].label}嗎？</p>
+    <svg class="branch-lines" viewBox="0 0 400 48" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M200 0V10Q200 24 184 24H116Q100 24 100 38V48M200 10Q200 24 216 24H284Q300 24 300 38V48"/>
+    </svg>
+    <div class="buckets">${bucket("yes")}${bucket("no")}</div>
+  </div>`;
+  if (!treeReady) return `<section class="screen tree-setup">
+    <div class="bar"><h2>先設定分類條件</h2>
+      ${select("question","分類條件",featureList.map(f=>[f.id,f.label+"嗎？"]),questionId)}</div>
+    ${branches}
+    <div class="bar"><p>${canSplit ? "每隻動物只放到其中一條分支。" : "這個條件會把所有動物放到同一側，請換一個。"}</p>
+      ${button("confirm-tree","開始放圖卡",{disabled:!canSplit,style:"primary"})}</div>
+  </section>`;
   const prompt = checked
     ? mistakes.length ? `答對 ${batch.length - mistakes.length} / ${batch.length} 張。看看線索，再修正放錯的圖卡。` : `你用同一個條件，正確分完了 ${batch.length} 張圖卡！`
     : canSplit ? "把圖卡拖到「是」或「否」，也可以直接點選放置區。" : "這個條件會把所有圖卡放在同一邊，請換一個條件。";
@@ -140,12 +156,11 @@ function tree() {
     ? `${wrong ? "再觀察。你放在「" + sideLabel[currentSide] + "」，正確是「" + sideLabel[answer(animal)] + "」。" : "放對了。"}${clues[questionId]}`
     : currentSide ? `已放在「${sideLabel[currentSide]}」，可點另一側改放。` : "";
   return `<section class="screen tree">
-    <div class="bar"><div><h2>用一個條件分成兩組</h2><p class="definition">符合條件的分一組，其餘分另一組。</p></div>
-    ${select("question","分類條件",featureList.map(f=>[f.id,f.label+"嗎？"]),questionId)}</div>
+    <div class="bar"><h2>沿著分支放圖卡</h2>${button("edit-tree","重設分類條件")}</div>
     <div class="sort-area">
       <p class="prompt">${prompt}</p>
       <div class="sort-card"><span class="card-position">第 ${current + 1} / ${batch.length} 張</span>${picture(animal,canSplit && !checked)}</div>
-      <div class="buckets">${bucket("yes")}${bucket("no")}</div>
+      ${branches}
       <p class="card-feedback" aria-live="polite">${detail}</p>
     </div>
     <div class="round-footer"><div class="card-index" aria-label="切換圖卡">${batch.map((a,i)=>{
@@ -255,6 +270,15 @@ activity.addEventListener("click", event => {
       say(`已抽出 ${batch.length} 張圖卡。`);
       break;
     case "deck-page": deckPage += Number(value); break;
+    case "confirm-tree":
+      treeReady = true;
+      focus = {action:"place",value:"yes"};
+      break;
+    case "edit-tree":
+      resetRound();
+      focus = {id:"question"};
+      say("已回到設定。確認條件後可重新放卡。");
+      break;
     case "card": current = Number(value); break;
     case "place":
       say(`${batch[current].name}已放在「${sideLabel[value]}」。`);
