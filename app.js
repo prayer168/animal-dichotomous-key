@@ -139,11 +139,11 @@ function reviewTree(node) {
     : "";
   return '<div class="tree-node">' + marker +
     (node.question ? '<strong>' + questionLabel(node.question) + '</strong>' : "") +
-    members + '</div>' + children;
+    (node.cards.length ? members : '<p>沒有圖卡</p>') + '</div>' + children;
 }
 
 function diagramBranch(node, incoming = "") {
-  const members = node.cards.map(animal => animal.name).join("、");
+  const members = node.cards.map(animal => animal.name).join("、") || "沒有圖卡";
   const title = incoming || "全部動物";
   const question = node.question ? `<p class="diagram-question">${questionLabel(node.question)}</p>` : "";
   const children = node.children.length ? `<ul class="diagram-children">${node.children.map((child,index) => {
@@ -163,7 +163,7 @@ function tree() {
   if (!activeBranch) {
     const message = sorted ? "全部正確！每隻動物都沿著符合特徵的路徑分類。"
       : reviewBranch ? "請修正第一個有錯的分支，然後繼續完成分類。"
-      : "每個末端都剩一張圖卡。現在可以核對整棵樹。";
+    : "所有動物都已分到各自的末端。現在可以核對整棵樹。";
     return '<section class="screen"><h2>分類樹總覽</h2><div class="tree-review tree-diagram" role="region" aria-label="由上往下的分類樹" tabindex="0">' + diagramBranch(rootBranch) +
       '</div><div class="bar tree-footer"><p>' + message + '</p>' +
       (sorted ? button("go","前往維恩圖",{value:"venn",style:"primary"}) :
@@ -171,7 +171,7 @@ function tree() {
         button("check","檢查整棵樹",{style:"primary"})) + '</div></section>';
   }
   const {cards,path,placements,question} = activeBranch;
-  const options = availableQuestions(cards);
+  const options = availableQuestions(activeBranch);
   const pending = cards.filter(animal => !placements.has(animal.id));
   const ready = Boolean(question);
   const emptySide = ready && !pending.length && new Set(placements.values()).size < 2;
@@ -193,10 +193,10 @@ function tree() {
     '<div class="branch-tree" role="group" aria-label="二分分類樹"><p class="branch-root">' + questionLabel(question || questionId) + '</p>' +
     '<svg class="branch-lines" viewBox="0 0 400 48" preserveAspectRatio="none" aria-hidden="true"><path d="M200 0V10Q200 24 184 24H116Q100 24 100 38V48M200 10Q200 24 216 24H284Q300 24 300 38V48"/></svg>' +
     '<div class="buckets">' + bucket("yes") + bucket("no") + '</div></div></div>' +
-    '<div class="bar tree-footer"><p>' + (emptySide ? "兩個分支都要有卡片。選一張卡重新放置。" :
+    '<div class="bar tree-footer"><p>' + (emptySide ? "這一側是空的。完成這組後，換一個條件繼續細分。" :
       ready ? "點圖卡下方的答案，圖卡就會移到對應的分支。" : "選好條件後，可直接點圖卡下方的答案。") +
     ' <strong>已分到末端 ' + leafCount(rootBranch) + ' / ' + batch.length + ' 張</strong></p>' +
-    (ready ? button("next-branch","完成這組",{disabled:pending.length>0 || emptySide,style:"primary"}) :
+    (ready ? button("next-branch","完成這組",{disabled:pending.length>0,style:"primary"}) :
       button("confirm-tree","開始放圖卡",{style:"primary"})) + '</div></section>';
 }
 
@@ -221,17 +221,20 @@ function answer(animal,id) {
   return match ? "yes" : "no";
 }
 
-function availableQuestions(cards) {
+function availableQuestions({cards,path}) {
   const shared = featureList.map(feature=>feature.id).filter(id=>
     cards.some(animal=>answer(animal,id)==="yes") && cards.some(animal=>answer(animal,id)==="no"));
   // A card-specific observation can separate animals with identical shared flags.
-  return shared.length ? shared : cards.map(animal=>animal.id);
+  const candidates = [...shared, ...cards.map(animal=>animal.id)];
+  const unused = candidates.filter(id => !path.some(step => step.startsWith(questionLabel(id) + " ")));
+  const unusedShared = unused.filter(id => features[id]);
+  return unusedShared.length ? unusedShared : unused.length ? unused : candidates;
 }
 
 function activateBranch(node) {
   activeBranch = node;
   selectedCard = "";
-  if (node) questionId = node.question || availableQuestions(node.cards)[0];
+  if (node) questionId = node.question || availableQuestions(node)[0];
 }
 
 function comparison() {
