@@ -128,10 +128,18 @@ function firstError(node) {
 }
 
 function reviewTree(node) {
-  if (!node.children.length) return node.cards.map(a => a.name).join("、");
-  return '<details open><summary>' + questionLabel(node.question) + '</summary><ul>' +
-    node.children.map((child,i) => '<li><strong>' + branchLabel(i === 0 ? "yes" : "no",node.question) + '：</strong>' + reviewTree(child) + '</li>').join('') +
-    '</ul></details>';
+  const members = node.path.length
+    ? '<div class="tree-members">' + node.cards.map(animal =>
+      '<span><img src="assets/' + animal.id + '.svg" alt="">' + animal.name + '</span>').join("") + '</div>'
+    : '<p>全部 ' + node.cards.length + ' 張圖卡</p>';
+  const marker = node === activeBranch ? '<strong class="active-branch">目前分類</strong>' : "";
+  const children = node.children.length
+    ? '<ul>' + node.children.map((child,i) => '<li><strong>' +
+      branchLabel(i === 0 ? "yes" : "no",node.question) + '</strong>' + reviewTree(child) + '</li>').join('') + '</ul>'
+    : "";
+  return '<div class="tree-node">' + marker +
+    (node.question ? '<strong>' + questionLabel(node.question) + '</strong>' : "") +
+    members + '</div>' + children;
 }
 
 function tree() {
@@ -163,7 +171,9 @@ function tree() {
     (path.length ? path.join(" → ") : "起點 · 全部圖卡") + '</p></div>' +
     (ready ? button("edit-tree","重設這組條件") :
       select("question","分類條件",options.map(id=>[id,questionLabel(id)]),questionId)) + '</div>' +
-    '<div class="tree-board"><section class="card-tray"><h3>待分類 · ' + pending.length + ' 張</h3>' +
+    '<div class="tree-board' + (rootBranch.children.length ? ' with-history' : '') + '">' +
+    (rootBranch.children.length ? '<aside class="tree-review branch-history" aria-label="已完成的分支" tabindex="0"><h3>分類樹進度</h3>' + reviewTree(rootBranch) + '</aside>' : '') +
+    '<section class="card-tray"><h3>待分類 · ' + pending.length + ' 張</h3>' +
     '<div class="tray-cards">' + pending.map(animal=>cardTile(animal,true)).join("") + '</div></section>' +
     '<div class="branch-tree" role="group" aria-label="二分分類樹"><p class="branch-root">' + questionLabel(question || questionId) + '</p>' +
     '<svg class="branch-lines" viewBox="0 0 400 48" preserveAspectRatio="none" aria-hidden="true"><path d="M200 0V10Q200 24 184 24H116Q100 24 100 38V48M200 10Q200 24 216 24H284Q300 24 300 38V48"/></svg>' +
@@ -241,9 +251,19 @@ function venn() {
     </div>
     <div class="pair-pictures">${picture(left)}${picture(right)}</div>
     <div class="venn" role="group" aria-label="兩種動物的維恩圖" aria-describedby="venn-question">
-      <svg viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true">
-        <ellipse cx="205" cy="110" rx="199" ry="105" class="venn-left"/>
-        <ellipse cx="395" cy="110" rx="199" ry="105" class="venn-right"/>
+      <svg viewBox="0 0 600 280" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="venn-amber" x2="0" y2="1"><stop stop-color="#a46940"/><stop offset="1" stop-color="#503c30"/></linearGradient>
+          <linearGradient id="venn-jade" x2="0" y2="1"><stop stop-color="#488872"/><stop offset="1" stop-color="#254d46"/></linearGradient>
+          <clipPath id="venn-intersection"><ellipse cx="200" cy="140" rx="193" ry="131"/></clipPath>
+        </defs>
+        <ellipse cx="200" cy="140" rx="193" ry="131" class="venn-left"/>
+        <ellipse cx="400" cy="140" rx="193" ry="131" class="venn-right"/>
+        <ellipse cx="400" cy="140" rx="193" ry="131" fill="#345b51" clip-path="url(#venn-intersection)"/>
+        <g fill="none" stroke-width="2" vector-effect="non-scaling-stroke">
+          <ellipse cx="200" cy="140" rx="193" ry="131" stroke="#ffc388"/>
+          <ellipse cx="400" cy="140" rx="193" ry="131" stroke="#aee6bf"/>
+        </g>
       </svg>
       ${["左邊獨有","共同特徵","右邊獨有"].map((label,i)=>`<section><h3>${button("zone",label,{value:i,pressed:vennGuess===i})}</h3>
         ${showFeatures ? (labels[i].length ? `<ul>${labels[i].map(item=>`<li>${item}</li>`).join("")}</ul>` : "<p>無列出的特徵</p>") : ""}</section>`).join("")}
