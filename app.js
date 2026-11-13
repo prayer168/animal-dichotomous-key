@@ -169,7 +169,7 @@ function tree() {
     '<svg class="branch-lines" viewBox="0 0 400 48" preserveAspectRatio="none" aria-hidden="true"><path d="M200 0V10Q200 24 184 24H116Q100 24 100 38V48M200 10Q200 24 216 24H284Q300 24 300 38V48"/></svg>' +
     '<div class="buckets">' + bucket("yes") + bucket("no") + '</div></div></div>' +
     '<div class="bar tree-footer"><p>' + (emptySide ? "兩個分支都要有卡片。選一張卡重新放置。" :
-      ready ? "點圖卡下方的答案，圖卡就會移到對應的分支。" : "確認條件後，再把這一組動物分到兩邊。") +
+      ready ? "點圖卡下方的答案，圖卡就會移到對應的分支。" : "選好條件後，可直接點圖卡下方的答案。") +
     ' <strong>已分到末端 ' + leafCount(rootBranch) + ' / ' + batch.length + ' 張</strong></p>' +
     (ready ? button("next-branch","完成這組",{disabled:pending.length>0 || emptySide,style:"primary"}) :
       button("confirm-tree","開始放圖卡",{style:"primary"})) + '</div></section>';
@@ -180,9 +180,9 @@ function cardTile(animal, inTray = false) {
   const card = button("card",'<img src="assets/' + animal.id + '.svg" alt="" draggable="false"><span>' +
     animal.name + '</span>',{value:animal.id,disabled:!ready,pressed:selectedCard===animal.id,style:"tree-card"})
     .replace('type="button"', 'type="button" draggable="' + ready + '"');
-  if (!inTray || !ready) return card;
+  if (!inTray) return card;
   const choices = ["yes","no"].map(side => button("answer-card",
-    branchLabel(side,activeBranch.question) + '<span class="sr-only">，' + animal.name + '</span>',
+    branchLabel(side,activeBranch.question || questionId) + '<span class="sr-only">，' + animal.name + '</span>',
     {value:animal.id + ":" + side})).join("");
   return '<div class="tray-tile">' + card + '<div class="card-choices">' + choices + '</div></div>';
 }
@@ -321,6 +321,7 @@ activity.addEventListener("click", event => {
       break;
     case "answer-card": {
       const [id,side] = value.split(":");
+      activeBranch.question ||= questionId;
       place(side,id);
       focus = afterPlacement();
       if (focus.action === "card") focus = {action:"answer-card",value:focus.value + ":" + side};
