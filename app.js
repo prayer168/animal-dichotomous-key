@@ -179,7 +179,7 @@ function tree() {
     const assigned = cards.filter(animal => placements.get(animal.id) === side);
     return '<section class="branch-bin" data-bin="' + side + '"><h3>' +
       button("place",branchLabel(side,question || questionId) + ' · ' + assigned.length + ' 張',{value:side,disabled:!ready || !selectedCard,style:"bucket"}) +
-      '</h3><div class="branch-cards">' + assigned.map(cardTile).join("") + '</div></section>';
+      '</h3><div class="branch-cards">' + assigned.map(animal=>cardTile(animal)).join("") + '</div></section>';
   };
   return '<section class="screen tree"><div class="tree-heading"><div><h2>' +
     (ready ? "沿著分支放圖卡" : "設定這一組的分類條件") + '</h2><p>' +
@@ -194,7 +194,7 @@ function tree() {
     '<svg class="branch-lines" viewBox="0 0 400 48" preserveAspectRatio="none" aria-hidden="true"><path d="M200 0V10Q200 24 184 24H116Q100 24 100 38V48M200 10Q200 24 216 24H284Q300 24 300 38V48"/></svg>' +
     '<div class="buckets">' + bucket("yes") + bucket("no") + '</div></div></div>' +
     '<div class="bar tree-footer"><p>' + (emptySide ? "這一側是空的。完成這組後，換一個條件繼續細分。" :
-      ready ? "點圖卡下方的答案，圖卡就會移到對應的分支。" : "選好條件後，可直接點圖卡下方的答案。") +
+      ready ? "點圖卡下方的答案來分類。點分支裡的圖卡可退回。" : "選好條件後，可直接點圖卡下方的答案。") +
     ' <strong>已分到末端 ' + leafCount(rootBranch) + ' / ' + batch.length + ' 張</strong></p>' +
     (ready ? button("next-branch","完成這組",{disabled:pending.length>0,style:"primary"}) :
       button("confirm-tree","開始放圖卡",{style:"primary"})) + '</div></section>';
@@ -202,8 +202,9 @@ function tree() {
 
 function cardTile(animal, inTray = false) {
   const ready = Boolean(activeBranch.question);
-  const card = button("card",'<img src="assets/' + animal.id + '.svg" alt="" draggable="false"><span>' +
-    animal.name + '</span>',{value:animal.id,disabled:!ready,pressed:selectedCard===animal.id,style:"tree-card"})
+  const card = button(inTray ? "card" : "return-card",'<img src="assets/' + animal.id + '.svg" alt="" draggable="false"><span>' +
+    animal.name + '</span>' + (inTray ? "" : '<span class="sr-only">，退回待分類</span>'),
+    {value:animal.id,disabled:!ready,pressed:inTray ? selectedCard===animal.id : undefined,style:"tree-card"})
     .replace('type="button"', 'type="button" draggable="' + ready + '"');
   if (!inTray) return card;
   const choices = ["yes","no"].map(side => button("answer-card",
@@ -352,6 +353,12 @@ activity.addEventListener("click", event => {
       break;
     case "card":
       selectedCard = selectedCard === value ? "" : value;
+      break;
+    case "return-card":
+      activeBranch.placements.delete(value);
+      selectedCard = "";
+      focus = {action:"answer-card",value:value + ":yes"};
+      say("圖卡已退回待分類區。");
       break;
     case "place":
       place(value,selectedCard);
