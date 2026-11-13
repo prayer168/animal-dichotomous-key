@@ -65,30 +65,15 @@ main,.picture,.gallery { min-height: 0; min-width: 0; }
 .picture img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
 .picture figcaption { font-weight: 750; line-height: 1.18; padding: .2rem 0; overflow-wrap: anywhere; }
 .picture[draggable=true] { cursor: grab; }
-.sort-area { display: grid; grid-template: auto minmax(0,1fr) auto / minmax(0,1fr) minmax(0,1fr); gap: .4rem; min-height: 0; }
-.prompt,.card-feedback { grid-column: 1/-1; font-weight: 700; }
-.card-feedback:empty { display: none; }
-.sort-card,.sort-card .picture { height: 100%; min-height: 0; }
-.sort-card { position: relative; }
-.card-position { position:absolute; top:.55rem; left:.65rem; padding:.16rem .48rem; border-radius:1rem; color:#21372e; background:#fff8dc; font-size:.85rem; font-weight:750; pointer-events:none; }
 .buckets { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; min-height: 0; }
 .branch-tree { display:grid; grid-template-rows:auto clamp(1rem, 5vh, 2.5rem) minmax(0,1fr); min-width:0; min-height:0; }
 .branch-root { justify-self:center; text-align:center; padding:.3rem .85rem; border:1px solid var(--gold); border-radius:1.4rem; background:var(--page); color:var(--gold); font-weight:750; }
 .branch-lines { display:block; width:100%; height:100%; fill:none; stroke:var(--green); }
 .branch-lines path { stroke-width:2; vector-effect:non-scaling-stroke; }
-.tree-setup .branch-tree { align-self:center; width:min(100%, 36rem); justify-self:center; }
-.tree-setup .bucket { min-height:5rem; }
-.tree-setup .bucket small { display:none; }
 .bucket { display: grid; align-content: center; justify-items: center; gap: .25rem; border: 2px dashed var(--line); padding-inline: .25rem; border-radius: 2rem; }
 .bucket[data-value=no] { border-color:#d7a777; }
 .bucket strong { font-size: 2rem; }
 .bucket small { font: inherit; }
-.round-footer { display: grid; gap: .35rem; }
-.card-index { display: grid; grid-template-columns: repeat(12,minmax(0,1fr)); gap: .25rem; }
-.card-index button { padding-inline: 0; border-radius: 1.3em; }
-.card-index .placed { color: var(--green); }
-.card-index .needs-review { color: var(--gold); }
-.round-progress { display:grid; gap:.15rem; width:min(45%,16rem); }
 progress { width:100%; height:.48rem; accent-color:var(--gold); }
 .pair-select,.pair-pictures { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .5rem; }
 .pair-select { margin-top: .35rem; }
@@ -134,12 +119,9 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
   h2 { font-size: 1.22rem; }
   .screen > .bar,.deck-footer { flex-wrap: wrap; }
   .gallery { grid-template-columns: repeat(2,minmax(0,1fr)); }
-  .sort-area { grid-template: auto minmax(0,1fr) auto auto / minmax(0,1fr); gap: .25rem; }
   .bucket { grid-template-columns: auto 1fr auto; align-items: center; padding-inline: .3rem; }
   .bucket strong { font-size: 1.3rem; }
   .branch-tree { grid-template-rows:auto 1rem minmax(0,1fr); }
-  .tree-setup > .bar { flex-wrap:wrap; }
-  .card-index { grid-template-columns: repeat(6,minmax(0,1fr)); }
   .venn { padding-inline: .25rem; }
   .opening { grid-template: auto minmax(0,1fr) / 1fr; align-items:stretch; }
   .opening-copy { padding:1rem; gap:.55rem; }
@@ -153,7 +135,6 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
   .sheet { min-height: 350px; gap: .23rem; padding-block: .2rem; }
   h1 { font-size: 1.5rem; }
   .gallery { grid-template-columns: repeat(4,minmax(0,1fr)); }
-  .sort-area { grid-template: auto minmax(0,1fr) auto / 1fr 1fr; }
   .branch-tree { grid-template-rows:auto .65rem minmax(0,1fr); }
   .branch-root { padding:.12rem .55rem; }
   .bucket { grid-template-columns:auto 1fr auto; align-items:center; align-content:center; gap:.2rem; border-radius:1rem; }
@@ -164,4 +145,41 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
   .venn-footer { grid-column:1/-1; }
   .opening { grid-template:1fr / 1fr 1fr; align-items:center; }
   .venn { min-height: 0; }
+}
+
+.tree-heading,.tree-footer { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+.tree-heading label { min-width:0; }
+.tree-heading select { min-width:0; }
+.tree-heading p { color:var(--muted); font-size:.85rem; }
+.tree-board { display:grid; grid-template-columns:1fr 1.05fr; gap:.65rem; min-height:0; }
+.card-tray,.branch-bin { min-height:0; min-width:0; display:grid; grid-template-rows:auto minmax(0,1fr); gap:.25rem; }
+.card-tray h3 { color:var(--gold); }
+.tray-cards,.branch-cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); grid-template-rows:repeat(3,minmax(0,1fr)); gap:.25rem; min-height:0; }
+.branch-bin { border:1px dashed var(--line); border-radius:.9rem; padding:.3rem; }
+.branch-bin[data-bin=no] { border-color:#d7a777; }
+.branch-bin .bucket { width:100%; display:block; padding:.15rem; min-height:32px; }
+.branch-cards { grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:repeat(4,minmax(0,1fr)); }
+.tree-card { display:grid; grid-template-rows:minmax(0,1fr) auto; align-items:center; min-height:0; min-width:0; padding:.12rem; border-radius:.55rem; background:#f3e6bd; color:#21372e; font-size:.78rem; line-height:1.15; overflow-wrap:anywhere; }
+.tree-card[draggable=true] { cursor:grab; }
+.tree-card img { width:100%; height:100%; min-height:0; object-fit:contain; }
+.tree-card:disabled { opacity:1 !important; }
+.tree-card[aria-pressed=true] { background:var(--gold); outline:2px solid var(--gold); outline-offset:1px; }
+.tree-footer button { flex-shrink:0; }
+.tree-footer p { min-width:0; }
+.tree-footer strong { display:block; color:var(--green); }
+.tree-review { min-height:0; overflow:auto; padding:.45rem; }
+.tree-review ul { margin:.25rem 0 .45rem; padding-left:.8rem; list-style:none; border-left:1px solid var(--line); }
+.tree-review li { margin:.25rem 0; }
+.tree-review summary { cursor:pointer; color:var(--gold); }
+@media (max-width:660px) {
+  .tree-board { grid-template: minmax(0,1fr) minmax(0,1.2fr) / 1fr; gap:.3rem; }
+  .tree-heading { flex-wrap:wrap; }
+  .tree-footer { align-items:center; flex-wrap:wrap; font-size:.85rem; }
+  .tree-footer p { flex:1 1 9rem; }
+  .tree-card { font-size:.68rem; }
+  .branch-bin { padding:.18rem; }
+}
+@media (max-height:500px) and (orientation:landscape) {
+  .tree-board { grid-template: minmax(0,1fr) / 1fr 1.1fr; }
+  .tree-card { font-size:.68rem; }
 }

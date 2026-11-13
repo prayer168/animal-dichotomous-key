@@ -18,10 +18,10 @@ let drawCount = 9;
 let batch = [];
 let deckPage = 0;
 let questionId = "wings";
-let placements = new Map();
-let current = 0;
-let checked = false;
-let treeReady = false;
+let rootBranch;
+let activeBranch;
+let reviewBranch;
+let selectedCard = "";
 let sorted = false;
 let vennGuess = null;
 let vennChallenge = false;
@@ -51,10 +51,9 @@ function say(message = "") {
 }
 
 function resetRound() {
-  treeReady = false;
-  placements = new Map();
-  current = 0;
-  checked = false;
+  rootBranch = newBranch(batch);
+  activateBranch(batch.length ? rootBranch : null);
+  reviewBranch = null;
   sorted = false;
   vennGuess = null;
   vennChallenge = false;
@@ -103,79 +102,103 @@ function deck() {
       ${button("go","開始二分法",{value:"tree",style:"primary"})}</div></section>`;
 }
 
-function answer(animal) {
-  return features[questionId].test(animal) ? "yes" : "no";
+const sideLabel = { yes: "是", no: "否" };
+function newBranch(cards, path = []) {
+  return {cards, path, question: "", placements: new Map(), children: []};
 }
 
-const sideLabel = { yes: "是", no: "否" };
-const clues = {
-  wings: "觀察身體兩側有沒有翅膀。",
-  legs: "看牠有沒有用來在地面移動的腳。",
-  six: "數一數牠的腳，觸角和翅膀不算在內。",
-  feather: "觀察翅膀、尾巴或體表有沒有羽毛。",
-  four: "數一數牠用來步行的腳。",
-  shell: "觀察背上有沒有明顯的硬殼。",
-  fin: "觀察是否有魚類的鰭。",
-  eight: "數一數步足，靠近嘴巴的觸肢不算在內。",
-  two: "數一數牠用來步行的腳。"
-};
+function nextBranch(node) {
+  if (node.cards.length <= 1) return null;
+  if (!node.children.length) return node;
+  return node.children.map(nextBranch).find(Boolean) || null;
+}
+
+function leafCount(node) {
+  if (!node.children.length) return Number(node.cards.length === 1);
+  return node.children.reduce((count, child) => count + leafCount(child), 0);
+}
+
+function firstError(node) {
+  if (!node.children.length) return null;
+  if (node.cards.some(animal => node.placements.get(animal.id) !== answer(animal,node.question))) return node;
+  return node.children.map(firstError).find(Boolean) || null;
+}
+
+function reviewTree(node) {
+  if (!node.children.length) return node.cards.map(a => a.name).join("、");
+  return '<details open><summary>' + questionLabel(node.question) + '</summary><ul>' +
+    node.children.map((child,i) => '<li><strong>' + (i === 0 ? '是' : '否') + '：</strong>' + reviewTree(child) + '</li>').join('') +
+    '</ul></details>';
+}
 
 function tree() {
-  if (!batch.length) return `<section class="screen"><h2>二分法</h2><div class="intro">
-    <p>先抽一組動物圖卡，再用一個條件分成兩組。</p>
-    <div>${button("go","前往抽圖卡",{value:"deck",style:"primary"})}</div></div></section>`;
-  const animal = batch[current];
-  const currentSide = placements.get(animal.id);
-  const yesTotal = batch.filter(a=>answer(a)==="yes").length;
-  const canSplit = yesTotal > 0 && yesTotal < batch.length;
-  const mistakes = checked ? batch.filter(a=>placements.get(a.id)!==answer(a)) : [];
-  const wrong = checked && currentSide !== answer(animal);
+  if (!batch.length) return '<section class="screen"><h2>二分法</h2><div class="intro"><p>先抽一組動物圖卡。</p>' +
+    button("go","前往抽圖卡",{value:"deck",style:"primary"}) + '</div></section>';
+  if (!activeBranch) {
+    const message = sorted ? "全部正確！每隻動物都沿著符合特徵的路徑分類。"
+      : reviewBranch ? "請修正第一個有錯的分支，然後繼續完成分類。"
+      : "每個末端都剩一張圖卡。現在可以核對整棵樹。";
+    return '<section class="screen"><h2>分類樹總覽</h2><div class="tree-review">' + reviewTree(rootBranch) +
+      '</div><div class="bar tree-footer"><p>' + message + '</p>' +
+      (sorted ? button("go","前往維恩圖",{value:"venn",style:"primary"}) :
+        reviewBranch ? button("retry","修正分支",{style:"primary"}) :
+        button("check","檢查整棵樹",{style:"primary"})) + '</div></section>';
+  }
+  const {cards,path,placements,question} = activeBranch;
+  const options = availableQuestions(cards);
+  const pending = cards.filter(animal => !placements.has(animal.id));
+  const ready = Boolean(question);
+  const emptySide = ready && !pending.length && new Set(placements.values()).size < 2;
   const bucket = side => {
-    const count = batch.filter(a => (checked ? answer(a) : placements.get(a.id)) === side).length;
-    return button("place",`<strong>${sideLabel[side]}</strong><span>${side === "yes" ? "符合條件" : "不符合條件"}</span><small>${count} 張</small>`,
-      {value:side, disabled:!treeReady || checked, pressed:checked ? answer(animal)===side : currentSide===side, style:"bucket"});
+    const assigned = cards.filter(animal => placements.get(animal.id) === side);
+    return '<section class="branch-bin" data-bin="' + side + '"><h3>' +
+      button("place",sideLabel[side] + ' · ' + assigned.length + ' 張',{value:side,disabled:!ready || !selectedCard,style:"bucket"}) +
+      '</h3><div class="branch-cards">' + assigned.map(cardTile).join("") + '</div></section>';
   };
-  const branches = `<div class="branch-tree" role="group" aria-label="二分分類樹">
-    <p class="branch-root">${features[questionId].label}嗎？</p>
-    <svg class="branch-lines" viewBox="0 0 400 48" preserveAspectRatio="none" aria-hidden="true">
-      <path d="M200 0V10Q200 24 184 24H116Q100 24 100 38V48M200 10Q200 24 216 24H284Q300 24 300 38V48"/>
-    </svg>
-    <div class="buckets">${bucket("yes")}${bucket("no")}</div>
-  </div>`;
-  if (!treeReady) return `<section class="screen tree-setup">
-    <div class="bar"><h2>先設定分類條件</h2>
-      ${select("question","分類條件",featureList.map(f=>[f.id,f.label+"嗎？"]),questionId)}</div>
-    ${branches}
-    <div class="bar"><p>${canSplit ? "每隻動物只放到其中一條分支。" : "這個條件會把所有動物放到同一側，請換一個。"}</p>
-      ${button("confirm-tree","開始放圖卡",{disabled:!canSplit,style:"primary"})}</div>
-  </section>`;
-  const prompt = checked
-    ? mistakes.length ? `答對 ${batch.length - mistakes.length} / ${batch.length} 張。看看線索，再修正放錯的圖卡。` : `你用同一個條件，正確分完了 ${batch.length} 張圖卡！`
-    : canSplit ? "把圖卡拖到「是」或「否」，也可以直接點選放置區。" : "這個條件會把所有圖卡放在同一邊，請換一個條件。";
-  const detail = checked
-    ? `${wrong ? "再觀察。你放在「" + sideLabel[currentSide] + "」，正確是「" + sideLabel[answer(animal)] + "」。" : "放對了。"}${clues[questionId]}`
-    : currentSide ? `已放在「${sideLabel[currentSide]}」，可點另一側改放。` : "";
-  return `<section class="screen tree">
-    <div class="bar"><h2>沿著分支放圖卡</h2>${button("edit-tree","重設分類條件")}</div>
-    <div class="sort-area">
-      <p class="prompt">${prompt}</p>
-      <div class="sort-card"><span class="card-position">第 ${current + 1} / ${batch.length} 張</span>${picture(animal,canSplit && !checked)}</div>
-      ${branches}
-      <p class="card-feedback" aria-live="polite">${detail}</p>
-    </div>
-    <div class="round-footer"><div class="card-index" aria-label="切換圖卡">${batch.map((a,i)=>{
-      const placed = placements.get(a.id);
-      const mark = checked ? (placed===answer(a) ? " ✓" : " ↺") : placed ? " ·" : "";
-      const info = checked ? (placed===answer(a) ? "，正確" : "，需修正") : placed ? "，已放置" : "，待分類";
-      return button("card",`<span aria-hidden="true">${i+1}${mark}</span><span class="sr-only">第 ${i+1} 張，${a.name}${info}</span>`,
-      {value:i,pressed:i===current,style:checked && placed!==answer(a) ? "needs-review" : placed ? "placed" : ""});
-    }).join("")}</div>
-    <div class="bar"><div class="round-progress"><strong>已放 ${placements.size} / ${batch.length} 張</strong>
-      <progress aria-label="圖卡分類進度" max="${batch.length}" value="${placements.size}"></progress></div>
-      ${checked ? mistakes.length ? button("retry","修正錯卡",{style:"primary"}) :
-        button("go","前往維恩圖",{value:"venn",style:"primary"}) :
-        button("check","檢查答案",{disabled:placements.size!==batch.length,style:"primary"})}</div></div>
-  </section>`;
+  return '<section class="screen tree"><div class="tree-heading"><div><h2>' +
+    (ready ? "沿著分支放圖卡" : "設定這一組的分類條件") + '</h2><p>' +
+    (path.length ? path.join(" → ") : "起點 · 全部圖卡") + '</p></div>' +
+    (ready ? button("edit-tree","重設這組條件") :
+      select("question","分類條件",options.map(id=>[id,questionLabel(id)]),questionId)) + '</div>' +
+    '<div class="tree-board"><section class="card-tray"><h3>待分類 · ' + pending.length + ' 張</h3>' +
+    '<div class="tray-cards">' + pending.map(cardTile).join("") + '</div></section>' +
+    '<div class="branch-tree" role="group" aria-label="二分分類樹"><p class="branch-root">' + questionLabel(question || questionId) + '</p>' +
+    '<svg class="branch-lines" viewBox="0 0 400 48" preserveAspectRatio="none" aria-hidden="true"><path d="M200 0V10Q200 24 184 24H116Q100 24 100 38V48M200 10Q200 24 216 24H284Q300 24 300 38V48"/></svg>' +
+    '<div class="buckets">' + bucket("yes") + bucket("no") + '</div></div></div>' +
+    '<div class="bar tree-footer"><p>' + (emptySide ? "兩個分支都要有卡片。選一張卡重新放置。" :
+      ready ? "拖曳圖卡，或先點卡片再點「是／否」。" : "確認條件後，再把這一組動物分到兩邊。") +
+    ' <strong>已分到末端 ' + leafCount(rootBranch) + ' / ' + batch.length + ' 張</strong></p>' +
+    (ready ? button("next-branch","完成這組",{disabled:pending.length>0 || emptySide,style:"primary"}) :
+      button("confirm-tree","開始放圖卡",{style:"primary"})) + '</div></section>';
+}
+
+function cardTile(animal) {
+  const ready = Boolean(activeBranch.question);
+  return button("card",'<img src="assets/' + animal.id + '.svg" alt="" draggable="false"><span>' +
+    animal.name + '</span>',{value:animal.id,disabled:!ready,pressed:selectedCard===animal.id,style:"tree-card"})
+    .replace('type="button"', 'type="button" draggable="' + ready + '"');
+}
+
+function questionLabel(id) {
+  return (features[id]?.label || animals.find(animal=>animal.id===id)?.clue || "") + "嗎？";
+}
+
+function answer(animal,id) {
+  const match = features[id] ? features[id].test(animal) : animal.id === id;
+  return match ? "yes" : "no";
+}
+
+function availableQuestions(cards) {
+  const shared = featureList.map(feature=>feature.id).filter(id=>
+    cards.some(animal=>answer(animal,id)==="yes") && cards.some(animal=>answer(animal,id)==="no"));
+  // A card-specific observation can separate animals with identical shared flags.
+  return shared.length ? shared : cards.map(animal=>animal.id);
+}
+
+function activateBranch(node) {
+  activeBranch = node;
+  selectedCard = "";
+  if (node) questionId = node.question || availableQuestions(node.cards)[0];
 }
 
 function comparison() {
@@ -247,11 +270,11 @@ function navigate(destination, challenge = false) {
   activity.focus({preventScroll:true});
 }
 
-function place(side) {
-  placements.set(batch[current].id, side);
-  const next = batch.findIndex((animal,index)=>index>current && !placements.has(animal.id));
-  const first = batch.findIndex(animal=>!placements.has(animal.id));
-  if (next !== -1 || first !== -1) current = next !== -1 ? next : first;
+function place(side, id) {
+  if (!activeBranch?.question || !activeBranch.cards.some(animal=>animal.id===id)) return;
+  activeBranch.placements.set(id,side);
+  selectedCard = "";
+  say(animals.find(animal=>animal.id===id).name + "已放到「" + sideLabel[side] + "」。");
 }
 
 activity.addEventListener("click", event => {
@@ -271,37 +294,49 @@ activity.addEventListener("click", event => {
       break;
     case "deck-page": deckPage += Number(value); break;
     case "confirm-tree":
-      treeReady = true;
-      focus = {action:"place",value:"yes"};
+      activeBranch.question = questionId;
+      focus = {action:"card",value:activeBranch.cards[0].id};
       break;
     case "edit-tree":
-      resetRound();
+      activeBranch.question = "";
+      activeBranch.placements.clear();
+      selectedCard = "";
       focus = {id:"question"};
-      say("已回到設定。確認條件後可重新放卡。");
+      say("已清空這一組的放置。");
       break;
-    case "card": current = Number(value); break;
+    case "card":
+      selectedCard = selectedCard === value ? "" : value;
+      break;
     case "place":
-      say(`${batch[current].name}已放在「${sideLabel[value]}」。`);
-      place(value);
-      if (placements.size === batch.length) focus = {action:"check",value:""};
+      place(value,selectedCard);
+      focus = afterPlacement();
       break;
-    case "check": {
-      checked = true;
-      const firstWrong = batch.findIndex(animal=>placements.get(animal.id)!==answer(animal));
-      sorted = firstWrong === -1;
-      if (firstWrong !== -1) current = firstWrong;
-      say(firstWrong === -1 ? "全部正確！" : "已顯示正確分組。");
-      focus = {action:"card",value:String(current)};
+    case "next-branch": {
+      const {cards,path,placements,question} = activeBranch;
+      activeBranch.children = ["yes","no"].map(side =>
+        newBranch(cards.filter(animal=>placements.get(animal.id)===side),[...path,questionLabel(question)+" "+sideLabel[side]]));
+      activateBranch(nextBranch(rootBranch));
+      focus = activeBranch ? {id:"question"} : {action:"check",value:""};
       break;
     }
+    case "check":
+      reviewBranch = firstError(rootBranch);
+      sorted = !reviewBranch;
+      if (reviewBranch) {
+        const wrong = reviewBranch.cards.filter(animal=>reviewBranch.placements.get(animal.id)!==answer(animal,reviewBranch.question));
+        say(questionLabel(reviewBranch.question) + " " + wrong.map(animal=>animal.name+"應放「"+sideLabel[answer(animal,reviewBranch.question)]+"」").join("、"));
+      } else say("全部正確！");
+      focus = {action:sorted ? "go" : "retry",value:sorted ? "venn" : ""};
+      break;
     case "retry":
-      for (const animal of batch) {
-        if (placements.get(animal.id) !== answer(animal)) placements.delete(animal.id);
+      reviewBranch.children = [];
+      for (const animal of reviewBranch.cards) {
+        if (reviewBranch.placements.get(animal.id)!==answer(animal,reviewBranch.question)) reviewBranch.placements.delete(animal.id);
       }
-      current = batch.findIndex(animal=>!placements.has(animal.id));
-      checked = false;
-      focus = {action:"place",value:"yes"};
-      say("已保留分對的卡，請重新分類剩下的圖卡。");
+      activateBranch(reviewBranch);
+      reviewBranch = null;
+      focus = afterPlacement();
+      say("已保留這組分對的卡。修正後，重新細分受影響的分支。");
       break;
     case "zone":
       vennGuess = Number(value);
@@ -322,9 +357,7 @@ activity.addEventListener("change", event => {
   if (id === "draw-count") { drawCount = Number(value); return; }
   if (id === "question") {
     questionId = value;
-    const hadPlacements = placements.size > 0;
-    resetRound();
-    say(hadPlacements ? "已更換條件，請用新條件重新分類。" : "");
+    say();
   }
   if (id === "left" || id === "right") {
     vennGuess = null;
@@ -334,21 +367,27 @@ activity.addEventListener("change", event => {
   render({id});
 });
 
+function afterPlacement() {
+  const pending = activeBranch.cards.find(animal=>!activeBranch.placements.has(animal.id));
+  return pending ? {action:"card",value:pending.id} : {action:"next-branch",value:""};
+}
+
 activity.addEventListener("dragstart", event => {
-  if (!event.target.closest('.sort-card figure[draggable="true"]')) return;
-  event.dataTransfer.setData("text/plain",batch[current].id);
+  const card = event.target.closest('.tree-card[draggable="true"]');
+  if (!card) return;
+  event.dataTransfer.setData("text/plain",card.dataset.value);
   event.dataTransfer.effectAllowed = "move";
 });
 activity.addEventListener("dragover", event => {
-  if (event.target.closest(".bucket:enabled")) event.preventDefault();
+  if (activeBranch?.question && event.target.closest("[data-bin]")) event.preventDefault();
 });
 activity.addEventListener("drop", event => {
-  const bucket = event.target.closest(".bucket:enabled");
-  if (!bucket || event.dataTransfer.getData("text/plain") !== batch[current].id) return;
+  const bin = event.target.closest("[data-bin]");
+  if (!bin || !activeBranch?.question) return;
   event.preventDefault();
-  bucket.click();
+  place(bin.dataset.bin,event.dataTransfer.getData("text/plain"));
+  render(afterPlacement());
 });
-
 tabs.forEach(button=>button.addEventListener("click",()=>navigate(button.dataset.tab)));
 compact.addEventListener("change",()=>render());
 
