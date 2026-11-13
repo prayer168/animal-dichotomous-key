@@ -142,6 +142,21 @@ function reviewTree(node) {
     members + '</div>' + children;
 }
 
+function diagramBranch(node, incoming = "") {
+  const members = node.cards.map(animal => animal.name).join("、");
+  const title = incoming || "全部動物";
+  const question = node.question ? `<p class="diagram-question">${questionLabel(node.question)}</p>` : "";
+  const children = node.children.length ? `<ul class="diagram-children">${node.children.map((child,index) => {
+    const side = index === 0 ? "yes" : "no";
+    const label = questionLabel(node.question).slice(0,-2);
+    const outcome = label.startsWith("有") ? (side === "yes" ? label : "沒" + label)
+      : questionLabel(node.question) + " " + branchLabel(side,node.question);
+    return `<li>${diagramBranch(child,outcome)}</li>`;
+  }).join("")}</ul>` : "";
+  return `<div class="diagram-branch"><div class="diagram-node">
+    <strong>${title}</strong><p>${members}</p>${question}</div>${children}</div>`;
+}
+
 function tree() {
   if (!batch.length) return '<section class="screen"><h2>二分法</h2><div class="intro"><p>先抽一組動物圖卡。</p>' +
     button("go","前往抽圖卡",{value:"deck",style:"primary"}) + '</div></section>';
@@ -149,7 +164,7 @@ function tree() {
     const message = sorted ? "全部正確！每隻動物都沿著符合特徵的路徑分類。"
       : reviewBranch ? "請修正第一個有錯的分支，然後繼續完成分類。"
       : "每個末端都剩一張圖卡。現在可以核對整棵樹。";
-    return '<section class="screen"><h2>分類樹總覽</h2><div class="tree-review">' + reviewTree(rootBranch) +
+    return '<section class="screen"><h2>分類樹總覽</h2><div class="tree-review tree-diagram" role="region" aria-label="由上往下的分類樹" tabindex="0">' + diagramBranch(rootBranch) +
       '</div><div class="bar tree-footer"><p>' + message + '</p>' +
       (sorted ? button("go","前往維恩圖",{value:"venn",style:"primary"}) :
         reviewBranch ? button("retry","修正分支",{style:"primary"}) :
