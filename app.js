@@ -127,11 +127,16 @@ function firstError(node) {
   return node.children.map(firstError).find(Boolean) || null;
 }
 
-function diagramBranch(node, incoming = "") {
-  const members = node.cards.map(animal => animal.name).join("、") || "沒有圖卡";
+function diagramBranch(node, incoming = "", correctionSide = "") {
+  const members = node.cards.map(animal => {
+    const picture = `<img src="assets/${animal.id}.svg" alt="${animal.name}" title="${animal.name}" width="32" height="22">`;
+    if (!correctionSide || answer(animal,reviewBranch.question) === correctionSide) return picture;
+    return button("select-correction",picture,{value:animal.id,style:"correction-card",pressed:selectedCard===animal.id})
+      .replace('type="button"', 'type="button" draggable="true"');
+  }).join("");
   const title = incoming || "全部動物";
   const question = node.question ? `<p class="diagram-question">${questionLabel(node.question)}</p>` : "";
-  const branches = node === activeBranch && node.question
+  const branches = (node === activeBranch || node === reviewBranch) && node.question
     ? ["yes","no"].map(side => newBranch(node.cards.filter(animal=>node.placements.get(animal.id)===side)))
     : node.children;
   const children = branches.length ? `<ul class="diagram-children">${branches.map((child,index) => {
@@ -139,18 +144,19 @@ function diagramBranch(node, incoming = "") {
     const label = questionLabel(node.question).slice(0,-2);
     const outcome = label.startsWith("有") ? (side === "yes" ? label : "沒" + label)
       : questionLabel(node.question) + " " + branchLabel(side,node.question);
-    return `<li>${diagramBranch(child,outcome)}</li>`;
+    return `<li>${diagramBranch(child,outcome,node === reviewBranch ? side : "")}</li>`;
   }).join("")}</ul>` : "";
-  return `<div class="diagram-branch"><div class="diagram-node${node === activeBranch ? " diagram-active" : ""}">
-    <strong>${title}</strong><p>${members}</p>${question}</div>${children}</div>`;
+  return `<div class="diagram-branch"><div class="diagram-node${node === activeBranch ? " diagram-active" : ""}" ${correctionSide ? `data-correction-side="${correctionSide}"` : ""}>
+    <strong>${title}</strong><div class="diagram-animals">${members || '<span aria-label="沒有圖卡">—</span>'}</div>${question}
+    ${correctionSide && selectedCard ? button("move-correction","移到這裡",{value:correctionSide}) : ""}</div>${children}</div>`;
 }
 
 function tree() {
   if (!batch.length) return '<section class="screen"><h2>二分法</h2><div class="intro"><p>先抽一組動物圖卡。</p>' +
     button("go","前往抽圖卡",{value:"deck",style:"primary"}) + '</div></section>';
   if (!activeBranch) {
-    const message = sorted ? "全部正確！每隻動物都沿著符合特徵的路徑分類。"
-      : reviewBranch ? "請修正第一個有錯的分支，然後繼續完成分類。"
+    const message = sorted ? "恭喜你分類成功！"
+      : reviewBranch ? "把有金色外框的圖卡拖到正確分支，也可點圖卡後選「移到這裡」。"
     : "所有動物都已分到各自的末端。現在可以核對整棵樹。";
     return '<section class="screen"><h2>分類樹總覽</h2><div class="tree-review tree-diagram" role="region" aria-label="由上往下的分類樹" tabindex="0">' + diagramBranch(rootBranch) +
       '</div><div class="bar tree-footer"><p>' + message + '</p>' +
@@ -279,6 +285,18 @@ function venn() {
       ${solved && vennChallenge ? button("restart","再玩一輪",{style:"primary"}) : ""}</div></section>`;
 }
 
+function fitDiagram(panel) {
+  const branch = panel.firstElementChild;
+  branch.style.zoom = "1";
+  const padding = 12;
+  const scale = Math.min(1,(panel.clientWidth-padding)/branch.offsetWidth,(panel.clientHeight-padding)/branch.offsetHeight);
+  if (scale > 0) branch.style.zoom = String(scale);
+}
+
+const diagramObserver = new ResizeObserver(entries => {
+  for (const {target} of entries) fitDiagram(target);
+});
+
 function render(focus) {
   for (const button of tabs) {
     const stage = button.dataset.tab;
@@ -287,12 +305,12 @@ function render(focus) {
     if (button.dataset.tab === tab) button.setAttribute("aria-current","page");
     else button.removeAttribute("aria-current");
   }
-  const previousResult = activity.querySelector(".live-tree .tree-diagram");
+  diagramObserver.disconnect();
   activity.innerHTML = {deck,tree,venn}[tab]();
-  const result = activity.querySelector(".live-tree .tree-diagram");
-  if (result && previousResult) {
-    result.scrollTop = previousResult.scrollTop;
-    result.scrollLeft = previousResult.scrollLeft;
+  const result = activity.querySelector(".tree-diagram");
+  if (result) {
+    fitDiagram(result);
+    diagramObserver.observe(result);
   }
   if (!focus) return;
   const element = focus.id ? document.getElementById(focus.id) :
@@ -377,12 +395,20 @@ activity.addEventListener("click", event => {
     }
     case "check":
       reviewBranch = firstError(rootBranch);
+      selectedCard = "";
       sorted = !reviewBranch;
       if (reviewBranch) {
         const wrong = reviewBranch.cards.filter(animal=>reviewBranch.placements.get(animal.id)!==answer(animal,reviewBranch.question));
         say(questionLabel(reviewBranch.question) + " " + wrong.map(animal=>animal.name+"應放「"+branchLabel(answer(animal,reviewBranch.question),reviewBranch.question)+"」").join("、"));
-      } else say("全部正確！");
+      } else say("恭喜你分類成功！");
       focus = {action:sorted ? "go" : "retry",value:sorted ? "venn" : ""};
+      break;
+    case "select-correction":
+      selectedCard = value;
+      break;
+    case "move-correction":
+      correctPlacement(selectedCard,value);
+      focus = {action:"select-correction",value:selectedCard};
       break;
     case "retry":
       reviewBranch.children = [];
@@ -428,16 +454,53 @@ function afterPlacement() {
   return pending ? {action:"card",value:pending.id} : {action:"next-branch",value:""};
 }
 
+function correctPlacement(id, side) {
+  const node = reviewBranch;
+  const animal = node?.cards.find(card=>card.id===id);
+  if (!animal) return;
+  if (answer(animal,node.question)!==side) {
+    say("再看看這張圖卡符合哪一側。");
+    return;
+  }
+  node.placements.set(id,side);
+  selectedCard = "";
+  if (node.cards.some(card=>node.placements.get(card.id)!==answer(card,node.question))) return;
+  node.children = ["yes","no"].map(branchSide=>newBranch(
+    node.cards.filter(card=>node.placements.get(card.id)===branchSide),
+    [...node.path,questionLabel(node.question)+" "+branchLabel(branchSide,node.question)]
+  ));
+  reviewBranch = null;
+  activateBranch(nextBranch(rootBranch));
+  if (!activeBranch) {
+    reviewBranch = firstError(rootBranch);
+    sorted = !reviewBranch;
+  }
+  say(sorted ? "恭喜你分類成功！" : "已修正這組，請繼續完成分類。");
+}
+
 activity.addEventListener("dragstart", event => {
+  const correction = event.target.closest(".correction-card");
+  if (correction) {
+    event.dataTransfer.setData("text/plain",correction.dataset.value);
+    return;
+  }
   const card = event.target.closest('.tree-card[draggable="true"]');
   if (!card) return;
   event.dataTransfer.setData("text/plain",card.dataset.value);
   event.dataTransfer.effectAllowed = "move";
 });
 activity.addEventListener("dragover", event => {
+  if (reviewBranch && event.target.closest("[data-correction-side]")) event.preventDefault();
   if (activeBranch?.question && event.target.closest("[data-bin]")) event.preventDefault();
 });
 activity.addEventListener("drop", event => {
+  const correction = event.target.closest("[data-correction-side]");
+  if (correction && reviewBranch) {
+    event.preventDefault();
+    correctPlacement(event.dataTransfer.getData("text/plain"),correction.dataset.correctionSide);
+    render();
+    return;
+  }
   const bin = event.target.closest("[data-bin]");
   if (!bin || !activeBranch?.question) return;
   event.preventDefault();

@@ -225,10 +225,12 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
   .compare .pair-pictures { align-self:center; height:65%; }
 }
 
-.tree-diagram { display:flex; align-items:flex-start; }
+.tree-diagram { display:flex; align-items:flex-start; padding:6px; overflow:hidden; }
 .tree-diagram > .diagram-branch { margin-inline:auto; }
 .diagram-branch { display:flex; flex-direction:column; align-items:center; width:max-content; }
-.diagram-node { width:9rem; text-align:center; background:#193e41; border:1px solid var(--line); border-radius:.65rem; overflow:hidden; }
+.diagram-node { width:7.4rem; text-align:center; background:#193e41; border:1px solid var(--line); border-radius:.55rem; overflow:hidden; }
+.diagram-animals { display:flex; justify-content:center; flex-wrap:wrap; gap:2px; padding:.2rem; }
+.diagram-animals img { display:block; object-fit:contain; background:#f3e6bd; border-radius:.2rem; }
 .diagram-node strong { display:block; padding:.3rem; background:var(--selected); color:var(--ink); }
 .diagram-node p { margin:0; padding:.35rem; font-size:.85rem; }
 .diagram-node .diagram-question { border-top:1px solid var(--line); color:var(--gold); font-weight:700; }
@@ -248,3 +250,7 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
 @media (max-height:500px) and (orientation:landscape) {
   .tree-operation { grid-template:minmax(0,1fr) / minmax(0,1fr) minmax(0,1fr); }
 }
+
+.diagram-animals .correction-card { min-height:0; padding:2px; border:2px solid var(--gold); border-radius:.3rem; cursor:grab; }
+.diagram-node[data-correction-side] { border:2px dashed var(--green); }
+.diagram-node [data-action=move-correction] { min-height:28px; margin:.2rem; font-size:.8rem; padding:.15rem .35rem; }
