@@ -127,33 +127,21 @@ function firstError(node) {
   return node.children.map(firstError).find(Boolean) || null;
 }
 
-function reviewTree(node) {
-  const members = node.path.length
-    ? '<div class="tree-members">' + node.cards.map(animal =>
-      '<span><img src="assets/' + animal.id + '.svg" alt="">' + animal.name + '</span>').join("") + '</div>'
-    : '<p>全部 ' + node.cards.length + ' 張圖卡</p>';
-  const marker = node === activeBranch ? '<strong class="active-branch">目前分類</strong>' : "";
-  const children = node.children.length
-    ? '<ul>' + node.children.map((child,i) => '<li><strong>' +
-      branchLabel(i === 0 ? "yes" : "no",node.question) + '</strong>' + reviewTree(child) + '</li>').join('') + '</ul>'
-    : "";
-  return '<div class="tree-node">' + marker +
-    (node.question ? '<strong>' + questionLabel(node.question) + '</strong>' : "") +
-    (node.cards.length ? members : '<p>沒有圖卡</p>') + '</div>' + children;
-}
-
 function diagramBranch(node, incoming = "") {
   const members = node.cards.map(animal => animal.name).join("、") || "沒有圖卡";
   const title = incoming || "全部動物";
   const question = node.question ? `<p class="diagram-question">${questionLabel(node.question)}</p>` : "";
-  const children = node.children.length ? `<ul class="diagram-children">${node.children.map((child,index) => {
+  const branches = node === activeBranch && node.question
+    ? ["yes","no"].map(side => newBranch(node.cards.filter(animal=>node.placements.get(animal.id)===side)))
+    : node.children;
+  const children = branches.length ? `<ul class="diagram-children">${branches.map((child,index) => {
     const side = index === 0 ? "yes" : "no";
     const label = questionLabel(node.question).slice(0,-2);
     const outcome = label.startsWith("有") ? (side === "yes" ? label : "沒" + label)
       : questionLabel(node.question) + " " + branchLabel(side,node.question);
     return `<li>${diagramBranch(child,outcome)}</li>`;
   }).join("")}</ul>` : "";
-  return `<div class="diagram-branch"><div class="diagram-node">
+  return `<div class="diagram-branch"><div class="diagram-node${node === activeBranch ? " diagram-active" : ""}">
     <strong>${title}</strong><p>${members}</p>${question}</div>${children}</div>`;
 }
 
@@ -186,13 +174,14 @@ function tree() {
     (path.length ? path.join(" → ") : "起點 · 全部圖卡") + '</p></div>' +
     (ready ? button("edit-tree","重設這組條件") :
       select("question","分類條件",options.map(id=>[id,questionLabel(id)]),questionId)) + '</div>' +
-    '<div class="tree-board' + (rootBranch.children.length ? ' with-history' : '') + '">' +
-    (rootBranch.children.length ? '<aside class="tree-review branch-history" aria-label="已完成的分支" tabindex="0"><h3>分類樹進度</h3>' + reviewTree(rootBranch) + '</aside>' : '') +
+    '<div class="tree-board"><div class="tree-operation" role="group" aria-label="分類操作區">' +
     '<section class="card-tray"><h3>待分類 · ' + pending.length + ' 張</h3>' +
     '<div class="tray-cards">' + pending.map(animal=>cardTile(animal,true)).join("") + '</div></section>' +
     '<div class="branch-tree" role="group" aria-label="二分分類樹"><p class="branch-root">' + questionLabel(question || questionId) + '</p>' +
     '<svg class="branch-lines" viewBox="0 0 400 48" preserveAspectRatio="none" aria-hidden="true"><path d="M200 0V10Q200 24 184 24H116Q100 24 100 38V48M200 10Q200 24 216 24H284Q300 24 300 38V48"/></svg>' +
     '<div class="buckets">' + bucket("yes") + bucket("no") + '</div></div></div>' +
+    '<aside class="live-tree"><h3>即時分類結果</h3><div class="tree-review tree-diagram branch-history" role="region" aria-label="即時分類樹" tabindex="0">' +
+    diagramBranch(rootBranch) + '</div></aside></div>' +
     '<div class="bar tree-footer"><p>' + (emptySide ? "這一側是空的。完成這組後，換一個條件繼續細分。" :
       ready ? "點圖卡下方的答案來分類。點分支裡的圖卡可退回。" : "選好條件後，可直接點圖卡下方的答案。") +
     ' <strong>已分到末端 ' + leafCount(rootBranch) + ' / ' + batch.length + ' 張</strong></p>' +
@@ -298,7 +287,13 @@ function render(focus) {
     if (button.dataset.tab === tab) button.setAttribute("aria-current","page");
     else button.removeAttribute("aria-current");
   }
+  const previousResult = activity.querySelector(".live-tree .tree-diagram");
   activity.innerHTML = {deck,tree,venn}[tab]();
+  const result = activity.querySelector(".live-tree .tree-diagram");
+  if (result && previousResult) {
+    result.scrollTop = previousResult.scrollTop;
+    result.scrollLeft = previousResult.scrollLeft;
+  }
   if (!focus) return;
   const element = focus.id ? document.getElementById(focus.id) :
     [...activity.querySelectorAll("[data-action]:enabled")].find(button =>

@@ -158,7 +158,7 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
 .branch-bin { border:1px dashed var(--line); border-radius:.9rem; padding:.3rem; }
 .branch-bin[data-bin=no] { border-color:#d7a777; }
 .branch-bin .bucket { width:100%; display:block; padding:.15rem; min-height:32px; }
-.branch-cards { grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:repeat(4,minmax(0,1fr)); }
+.branch-cards { grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:repeat(4,minmax(2.8rem,1fr)); overflow:auto; }
 .tree-card { display:grid; grid-template-rows:minmax(0,1fr) auto; align-items:center; min-height:0; min-width:0; padding:.12rem; border-radius:.55rem; background:#f3e6bd; color:#21372e; font-size:.78rem; line-height:1.15; overflow-wrap:anywhere; }
 .tree-card[draggable=true] { cursor:grab; }
 .tree-card img { width:100%; height:100%; min-height:0; object-fit:contain; }
@@ -206,7 +206,7 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
 .tree-members img { width:1.8rem; height:1.25rem; object-fit:contain; background:#f3e6bd; border-radius:.2rem; }
 .active-branch { display:block; color:var(--gold); }
 .branch-history { border:1px solid var(--line); border-radius:.9rem; }
-.tree-board.with-history { grid-template-columns:minmax(0,.8fr) minmax(0,1fr) minmax(0,1.05fr); }
+
 .compare { grid-template-rows:auto minmax(3rem,.65fr) minmax(150px,2fr) auto; }
 .compare .pair-pictures { width:min(100%, 32rem); justify-self:center; min-height:0; }
 .compare .picture { border:0; border-radius:.8rem; }
@@ -216,11 +216,11 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
 .venn section { min-width:0; overflow-wrap:anywhere; }
 .venn li { margin:.2rem 0; }
 @media (max-width:660px) {
-  .tree-board.with-history { grid-template: minmax(3rem,.65fr) minmax(0,1.1fr) minmax(0,1fr) / 1fr; }
+
   .compare { grid-template-rows:auto minmax(3rem,.65fr) minmax(125px,2fr) auto; }
 }
 @media (max-height:500px) and (orientation:landscape) {
-  .tree-board.with-history { grid-template:minmax(0,1fr) / minmax(0,.7fr) minmax(0,1fr) minmax(0,1.1fr); }
+
   .compare { grid-template:auto minmax(0,1fr) auto / minmax(0,.65fr) minmax(0,1.35fr); }
   .compare .pair-pictures { align-self:center; height:65%; }
 }
@@ -237,3 +237,14 @@ progress { width:100%; height:.48rem; accent-color:var(--gold); }
 .tree-diagram .diagram-children > li { position:relative; padding:.7rem .22rem 0; margin:0; }
 .diagram-children > li::before { content:""; position:absolute; top:0; left:50%; width:50%; height:.7rem; border-top:2px solid var(--line); border-left:2px solid var(--line); }
 .diagram-children > li:last-child::before { left:0; border-left:0; border-right:2px solid var(--line); }
+
+.tree .tree-board { grid-template: minmax(0,1fr) / minmax(0,1fr) minmax(0,1fr); }
+.tree-operation { display:grid; grid-template-rows:minmax(0,1fr) minmax(0,1fr); gap:.4rem; min-height:0; min-width:0; }
+.live-tree { display:grid; grid-template-rows:auto minmax(0,1fr); gap:.25rem; min-width:0; min-height:0; }
+.diagram-active { border:2px solid var(--gold); }
+@media (max-width:660px) {
+  .tree .tree-board { grid-template:minmax(0,1.6fr) minmax(0,1fr) / minmax(0,1fr); }
+}
+@media (max-height:500px) and (orientation:landscape) {
+  .tree-operation { grid-template:minmax(0,1fr) / minmax(0,1fr) minmax(0,1fr); }
+}
