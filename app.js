@@ -99,10 +99,13 @@ function deck() {
     <div class="bar deck-footer"><p>空中 ${groupCounts[0]} ・陸地 ${groupCounts[1]} ・水中 ${groupCounts[2]}</p>
       ${pages > 1 ? `<div class="tools">${button("deck-page","上一頁",{value:-1,disabled:deckPage===0})}
       <span>${deckPage+1} / ${pages}</span>${button("deck-page","下一頁",{value:1,disabled:deckPage===pages-1})}</div>` : ""}
-      ${button("go","開始二分法",{value:"tree",style:"primary"})}</div></section>`;
+      ${button("go","按我進行二分法",{value:"tree",style:"primary start-tree"})}</div></section>`;
 }
 
 const sideLabel = { yes: "是", no: "否" };
+function branchLabel(side, question) {
+  return questionLabel(question).startsWith("有") ? (side === "yes" ? "有" : "沒有") : sideLabel[side];
+}
 function newBranch(cards, path = []) {
   return {cards, path, question: "", placements: new Map(), children: []};
 }
@@ -127,7 +130,7 @@ function firstError(node) {
 function reviewTree(node) {
   if (!node.children.length) return node.cards.map(a => a.name).join("、");
   return '<details open><summary>' + questionLabel(node.question) + '</summary><ul>' +
-    node.children.map((child,i) => '<li><strong>' + (i === 0 ? '是' : '否') + '：</strong>' + reviewTree(child) + '</li>').join('') +
+    node.children.map((child,i) => '<li><strong>' + branchLabel(i === 0 ? "yes" : "no",node.question) + '：</strong>' + reviewTree(child) + '</li>').join('') +
     '</ul></details>';
 }
 
@@ -152,7 +155,7 @@ function tree() {
   const bucket = side => {
     const assigned = cards.filter(animal => placements.get(animal.id) === side);
     return '<section class="branch-bin" data-bin="' + side + '"><h3>' +
-      button("place",sideLabel[side] + ' · ' + assigned.length + ' 張',{value:side,disabled:!ready || !selectedCard,style:"bucket"}) +
+      button("place",branchLabel(side,question || questionId) + ' · ' + assigned.length + ' 張',{value:side,disabled:!ready || !selectedCard,style:"bucket"}) +
       '</h3><div class="branch-cards">' + assigned.map(cardTile).join("") + '</div></section>';
   };
   return '<section class="screen tree"><div class="tree-heading"><div><h2>' +
@@ -161,22 +164,27 @@ function tree() {
     (ready ? button("edit-tree","重設這組條件") :
       select("question","分類條件",options.map(id=>[id,questionLabel(id)]),questionId)) + '</div>' +
     '<div class="tree-board"><section class="card-tray"><h3>待分類 · ' + pending.length + ' 張</h3>' +
-    '<div class="tray-cards">' + pending.map(cardTile).join("") + '</div></section>' +
+    '<div class="tray-cards">' + pending.map(animal=>cardTile(animal,true)).join("") + '</div></section>' +
     '<div class="branch-tree" role="group" aria-label="二分分類樹"><p class="branch-root">' + questionLabel(question || questionId) + '</p>' +
     '<svg class="branch-lines" viewBox="0 0 400 48" preserveAspectRatio="none" aria-hidden="true"><path d="M200 0V10Q200 24 184 24H116Q100 24 100 38V48M200 10Q200 24 216 24H284Q300 24 300 38V48"/></svg>' +
     '<div class="buckets">' + bucket("yes") + bucket("no") + '</div></div></div>' +
     '<div class="bar tree-footer"><p>' + (emptySide ? "兩個分支都要有卡片。選一張卡重新放置。" :
-      ready ? "拖曳圖卡，或先點卡片再點「是／否」。" : "確認條件後，再把這一組動物分到兩邊。") +
+      ready ? "點圖卡下方的答案，圖卡就會移到對應的分支。" : "確認條件後，再把這一組動物分到兩邊。") +
     ' <strong>已分到末端 ' + leafCount(rootBranch) + ' / ' + batch.length + ' 張</strong></p>' +
     (ready ? button("next-branch","完成這組",{disabled:pending.length>0 || emptySide,style:"primary"}) :
       button("confirm-tree","開始放圖卡",{style:"primary"})) + '</div></section>';
 }
 
-function cardTile(animal) {
+function cardTile(animal, inTray = false) {
   const ready = Boolean(activeBranch.question);
-  return button("card",'<img src="assets/' + animal.id + '.svg" alt="" draggable="false"><span>' +
+  const card = button("card",'<img src="assets/' + animal.id + '.svg" alt="" draggable="false"><span>' +
     animal.name + '</span>',{value:animal.id,disabled:!ready,pressed:selectedCard===animal.id,style:"tree-card"})
     .replace('type="button"', 'type="button" draggable="' + ready + '"');
+  if (!inTray || !ready) return card;
+  const choices = ["yes","no"].map(side => button("answer-card",
+    branchLabel(side,activeBranch.question) + '<span class="sr-only">，' + animal.name + '</span>',
+    {value:animal.id + ":" + side})).join("");
+  return '<div class="tray-tile">' + card + '<div class="card-choices">' + choices + '</div></div>';
 }
 
 function questionLabel(id) {
@@ -274,7 +282,7 @@ function place(side, id) {
   if (!activeBranch?.question || !activeBranch.cards.some(animal=>animal.id===id)) return;
   activeBranch.placements.set(id,side);
   selectedCard = "";
-  say(animals.find(animal=>animal.id===id).name + "已放到「" + sideLabel[side] + "」。");
+  say(animals.find(animal=>animal.id===id).name + "已放到「" + branchLabel(side,activeBranch.question) + "」。");
 }
 
 activity.addEventListener("click", event => {
@@ -311,10 +319,17 @@ activity.addEventListener("click", event => {
       place(value,selectedCard);
       focus = afterPlacement();
       break;
+    case "answer-card": {
+      const [id,side] = value.split(":");
+      place(side,id);
+      focus = afterPlacement();
+      if (focus.action === "card") focus = {action:"answer-card",value:focus.value + ":" + side};
+      break;
+    }
     case "next-branch": {
       const {cards,path,placements,question} = activeBranch;
       activeBranch.children = ["yes","no"].map(side =>
-        newBranch(cards.filter(animal=>placements.get(animal.id)===side),[...path,questionLabel(question)+" "+sideLabel[side]]));
+        newBranch(cards.filter(animal=>placements.get(animal.id)===side),[...path,questionLabel(question)+" "+branchLabel(side,question)]));
       activateBranch(nextBranch(rootBranch));
       focus = activeBranch ? {id:"question"} : {action:"check",value:""};
       break;
@@ -324,7 +339,7 @@ activity.addEventListener("click", event => {
       sorted = !reviewBranch;
       if (reviewBranch) {
         const wrong = reviewBranch.cards.filter(animal=>reviewBranch.placements.get(animal.id)!==answer(animal,reviewBranch.question));
-        say(questionLabel(reviewBranch.question) + " " + wrong.map(animal=>animal.name+"應放「"+sideLabel[answer(animal,reviewBranch.question)]+"」").join("、"));
+        say(questionLabel(reviewBranch.question) + " " + wrong.map(animal=>animal.name+"應放「"+branchLabel(answer(animal,reviewBranch.question),reviewBranch.question)+"」").join("、"));
       } else say("全部正確！");
       focus = {action:sorted ? "go" : "retry",value:sorted ? "venn" : ""};
       break;
